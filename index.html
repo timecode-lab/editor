@@ -135,8 +135,9 @@ main {
 }
 
 /* TOOLBAR */
-.toolbar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.toolbar { display: flex; gap: 6px; align-items: center; flex-direction: column; }
 .toolbar .btn { height: 36px; font-size: 12px; padding: 0 12px; }
+.toolbar-row { display: flex; gap: 6px; width: 100%; }
 .toolbar-sep { width: 1px; height: 22px; background: var(--border); flex-shrink: 0; }
 
 /* EDITOR SHELL */
@@ -285,6 +286,28 @@ main {
   header h1 { font-size: 13px; }
   .header-sub { display: none; }
   :root { --gutter: 28px; }
+	.toolbar {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .toolbar-row {
+    width: 100%;
+  }	
+  .toolbar-main {
+    order: 1;
+  }
+  .toolbar-history {
+    order: 2;
+  }
+  .toolbar-row .btn {
+    flex: 1;
+    justify-content: center;
+    font-size: clamp(10px, 2.8vw, 12px);
+    padding: 0 6px;
+  }
+  .toolbar-sep {
+    display: none;
+  }
 }
 </style>
 </head>
@@ -326,12 +349,16 @@ main {
   </div>
 
   <div class="toolbar">
-    <button class="btn" id="btn-undo" onclick="edUndo()" title="Ctrl+Z">↩ отмена</button>
-    <button class="btn" id="btn-redo" onclick="edRedo()" title="Ctrl+Y">↪ повтор</button>
+		<div class="toolbar-row toolbar-history">
+			<button class="btn" id="btn-undo" onclick="edUndo()" title="Ctrl+Z">↩ отмена</button>
+			<button class="btn" id="btn-redo" onclick="edRedo()" title="Ctrl+Y">↪ повтор</button>
+		</div>	
     <div class="toolbar-sep"></div>
-    <button class="btn btn-green" onclick="calcTimecodes()">⏱ таймкоды</button>
-    <button class="btn" onclick="copyText()">⎘ копировать</button>
-    <button class="btn" onclick="clearEditor()">✕ очистить</button>
+		<div class="toolbar-row toolbar-main">
+			<button class="btn btn-green" onclick="calcTimecodes()">⏱ таймкоды</button>
+			<button class="btn" onclick="copyText()">⎘ копировать</button>
+			<button class="btn" onclick="clearEditor()">✕ очистить</button>
+		</div>	
   </div>
 
   <div class="editor-wrap">
@@ -572,6 +599,10 @@ function renderCaret() {
   caretEl.style.left   = left + 'px';
   caretEl.style.width  = Math.max(2, charW) + 'px';
   caretEl.style.height = (parseInt(cs.lineHeight) - 8) + 'px';
+
+	const rta = document.getElementById('real-ta');
+	rta.style.top  = top + 'px';
+	rta.style.left = left + 'px';
 }
 
 // ═══════════════════════════════════════════
@@ -636,13 +667,13 @@ function xToCol(ri, contentEl, xOff) {
 
 function focusRealTa() {
   const rta = document.getElementById('real-ta');
-  rta.value = '';
-  try {
-		const x = window.scrollX;
-		const y = window.scrollY;
-		rta.focus();
-		window.scrollTo(x, y);
-} catch(e){}
+
+  rta.blur();
+
+  setTimeout(() => {
+    rta.value = '';
+    rta.focus();
+  }, 0);
 }
 
 // ═══════════════════════════════════════════
