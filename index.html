@@ -166,13 +166,20 @@ main {
 
 /* Hidden textarea for mobile input */
 .real-ta {
-  position: fixed; top: 0px; left: 0px;
-  width: 1px; height: 1px; opacity: 0.01;
-  pointer-events: none; resize: none;
-  border: none; background: transparent; color: transparent;
-	transform: translateY(-100px);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  resize: none;
+  border: none;
+  background: transparent;
+  color: transparent;
   font-size: 16px;
   padding: 0;
+	caret-color: var(--text);
 }
 
 /* ROW */
@@ -216,17 +223,6 @@ main {
 
 /* Active row highlight */
 .ed-row.active .row-content { background: rgba(124,106,247,0.05); }
-
-/* Block caret */
-.block-caret {
-  position: absolute; pointer-events: none;
-  background: var(--accent); opacity: 0.7;
-  border-radius: 1px;
-  animation: blink 1.1s step-end infinite;
-  z-index: 5;
-}
-.block-caret.in-text { background: rgba(232,232,240,0.65); }
-@keyframes blink { 0%,100%{opacity:0.7} 50%{opacity:0} }
 
 /* Placeholder */
 .editor-placeholder {
@@ -329,8 +325,8 @@ main {
   <div class="input-row">
     <div class="streamer-select-wrap">
       <select class="streamer-select" id="streamer-select" onchange="onSelectChange(this)">
+			  <option value="vanilla__bun">vanilla__bun</option>
         <option value="gellert_lera">gellert_lera</option>
-        <option value="vanilla__bun">vanilla__bun</option>
         <option value="__custom__">другой стример...</option>
       </select>
       <span class="select-arrow">▼</span>
@@ -444,21 +440,21 @@ window.addEventListener('DOMContentLoaded', () => {
   body.addEventListener('mousedown', onBodyMouseDown);
   body.addEventListener('touchstart', onBodyTouch, {passive:false});
   body.addEventListener('keydown', onKeyDown);
-  body.addEventListener('focus', ()=>{ hasFocus=true; renderCaret(); focusRealTa(); });
-  body.addEventListener('blur',  ()=>{ hasFocus=false; removeCaretEl(); });
+  body.addEventListener('focus', ()=>{ hasFocus=true; focusRealTa(); });
+  body.addEventListener('blur',  ()=>{ hasFocus=false; });
   body.addEventListener('paste', onPaste);
 
   const rta=document.getElementById('real-ta');
   rta.addEventListener('keydown', onKeyDown);
   rta.addEventListener('input',   onRtaInput);
   rta.addEventListener('paste',   onPaste);
-  rta.addEventListener('focus',   ()=>{ hasFocus=true; renderCaret(); });
+  rta.addEventListener('focus',   ()=>{ hasFocus=true; });
   rta.addEventListener('blur',    ()=>{
     // only lose focus if editor-body also lost focus
     setTimeout(()=>{
       if(document.activeElement!==document.getElementById('editor-body') &&
          document.activeElement!==document.getElementById('real-ta')){
-        hasFocus=false; removeCaretEl();
+        hasFocus=false;
       }
     },0);
   });
@@ -482,8 +478,7 @@ function render() {
     return;
   }
 
-  rows.forEach((row, ri) => body.appendChild(buildRowEl(row, ri)));
-  renderCaret();
+  rows.forEach((row, ri) => body.appendChild(buildRowEl(row, ri)));  
 }
 
 function buildRowEl(row, ri) {
@@ -542,67 +537,13 @@ function reRenderRow(ri) {
   const body = document.getElementById('editor-body');
   const old  = body.querySelector(`.ed-row[data-row="${ri}"]`);
   if (!old) { render(); return; }
-  old.replaceWith(buildRowEl(rows[ri], ri));
-  renderCaret();
+  old.replaceWith(buildRowEl(rows[ri], ri));  
 }
 
 function updateActiveClass() {
   document.querySelectorAll('.ed-row').forEach(el=>{
     el.classList.toggle('active', parseInt(el.dataset.row,10) === cur.row);
   });
-}
-
-// ═══════════════════════════════════════════
-// CARET
-// ═══════════════════════════════════════════
-let caretEl = null;
-
-function removeCaretEl() {
-  if (caretEl) { caretEl.remove(); caretEl = null; }
-}
-
-function renderCaret() {
-  if (!hasFocus || rows.length === 0) { removeCaretEl(); return; }
-
-  if (!caretEl) {
-    caretEl = document.createElement('div');
-    caretEl.className = 'block-caret';
-    document.getElementById('editor-body').appendChild(caretEl);
-  }
-
-  const ri  = cur.row;
-  const col = cur.col;
-  if (ri >= rows.length) return;
-
-  const rowEl = document.querySelector(`.ed-row[data-row="${ri}"]`);
-  if (!rowEl) return;
-  const contentEl = rowEl.querySelector('.row-content');
-
-  // Measure font
-  const cs = window.getComputedStyle(contentEl);
-  MCx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
-
-  const fullStr = rows[ri].time + SEP + rows[ri].text;
-  const safeCol = Math.min(col, fullStr.length);
-  const xPx = MCx.measureText(fullStr.slice(0, safeCol)).width;
-  const charW = MCx.measureText(safeCol < fullStr.length ? fullStr[safeCol] : 'M').width;
-
-  const bodyEl  = document.getElementById('editor-body');
-  const bodyRect= bodyEl.getBoundingClientRect();
-  const cRect   = contentEl.getBoundingClientRect();
-  const top     = cRect.top - bodyRect.top + bodyEl.scrollTop + 4;
-  const left    = cRect.left - bodyRect.left + xPx;
-
-  const inText = col >= PREFIX_LEN;
-  caretEl.className = 'block-caret' + (inText ? ' in-text' : '');
-  caretEl.style.top    = top + 'px';
-  caretEl.style.left   = left + 'px';
-  caretEl.style.width  = Math.max(2, charW) + 'px';
-  caretEl.style.height = (parseInt(cs.lineHeight) - 8) + 'px';
-
-	const rta = document.getElementById('real-ta');
-	rta.style.top  = top + 'px';
-	rta.style.left = left + 'px';
 }
 
 // ═══════════════════════════════════════════
@@ -617,8 +558,7 @@ function setCur(ri, col) {
   ri = Math.max(0, Math.min(ri, rows.length-1));
   col = Math.max(0, Math.min(col, rowLen(ri)));
   cur = { row:ri, col };
-  updateActiveClass();
-  renderCaret();
+  updateActiveClass();  
   scrollRowIntoView(ri);
 }
 
@@ -668,12 +608,9 @@ function xToCol(ri, contentEl, xOff) {
 function focusRealTa() {
   const rta = document.getElementById('real-ta');
 
-  rta.blur();
-
-  setTimeout(() => {
-    rta.value = '';
+  if (document.activeElement !== rta) {
     rta.focus();
-  }, 0);
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -1024,7 +961,6 @@ async function loadSongs() {
     toast(err.message||'ошибка загрузки','err');
   } finally { setBtnLoading(false); }
 	
-	document.getElementById('editor-body').focus();
 	focusRealTa();
 }
 
