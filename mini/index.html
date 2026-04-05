@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TimeCode-Lab mini</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0e0e10;
+  --surface:   #18181b;
+  --surface2:  #222226;
+  --border:    #2e2e34;
+  --border2:   #3d3d45;
+  --text:      #e8e8f0;
+  --muted:     #8888a0;
+  --accent:    #7c6af7;
+  --green:     #3ecf8e;
+  --green-dim: rgba(62,207,142,0.12);
+  --red:       #f46868;
+  --amber:     #f5a623;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+  --radius:    10px;
+  --radius-sm: 6px;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+/* ── HEADER ─────────────────────────────── */
+header {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface);
+  position: sticky; top: 0; z-index: 10;
+  flex-shrink: 0;
+}
+.logo-mark {
+  width: 28px; height: 28px; background: var(--accent);
+  border-radius: 7px; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.logo-mark svg { display: block; }
+header h1 {
+  font-family: var(--mono); font-size: 14px; font-weight: 700;
+  letter-spacing: -0.3px; color: var(--text);
+}
+header h1 span { color: var(--accent); }
+.header-badge {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  background: var(--surface2); border: 1px solid var(--border2);
+  color: var(--muted); border-radius: 4px; padding: 2px 6px;
+  letter-spacing: 0.5px; text-transform: uppercase; flex-shrink: 0;
+}
+.header-sub { font-size: 11px; color: var(--muted); margin-left: auto; font-family: var(--mono); }
+
+/* ── MAIN ───────────────────────────────── */
+main {
+  flex: 1; display: flex; flex-direction: column;
+  padding: 13px; gap: 11px;
+  max-width: 760px; width: 100%; margin: 0 auto;
+}
+
+/* ── INPUT ROW ──────────────────────────── */
+.input-row { display: flex; gap: 8px; align-items: stretch; }
+.streamer-select-wrap { flex: 1; position: relative; display: flex; flex-direction: column; }
+.streamer-select {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text); font-family: var(--mono);
+  font-size: 14px; padding: 0 32px 0 12px; height: 44px; outline: none;
+  cursor: pointer; appearance: none; -webkit-appearance: none; transition: border-color 0.15s;
+}
+.streamer-select:focus { border-color: var(--accent); }
+.streamer-select option { background: var(--surface2); color: var(--text); }
+.select-arrow {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  pointer-events: none; color: var(--muted); font-size: 9px;
+}
+.streamer-input {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text); font-family: var(--mono);
+  font-size: 14px; padding: 0 12px; height: 44px; outline: none;
+  transition: border-color 0.15s; display: none;
+}
+.streamer-input::placeholder { color: var(--muted); }
+.streamer-input:focus { border-color: var(--accent); }
+.streamer-input.visible { display: block; }
+
+/* ── BUTTONS ────────────────────────────── */
+.btn {
+  height: 44px; padding: 0 16px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+  font-family: var(--mono); font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s, opacity 0.12s;
+  white-space: nowrap; display: flex; align-items: center; justify-content: center; gap: 5px;
+  flex-shrink: 0; user-select: none; -webkit-user-select: none;
+  touch-action: manipulation;
+}
+.btn:hover  { background: var(--surface2); border-color: var(--border2); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.3; pointer-events: none; }
+
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: #6a5be0; border-color: #6a5be0; }
+
+.btn-green { background: var(--green-dim); border-color: rgba(62,207,142,0.35); color: var(--green); }
+.btn-green:hover { background: rgba(62,207,142,0.22); }
+
+.btn-danger { background: rgba(244,104,104,0.12); border-color: rgba(244,104,104,0.35); color: var(--red); }
+.btn-danger:hover { background: rgba(244,104,104,0.22); }
+
+/* ── STATUS ─────────────────────────────── */
+.status-bar {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 11px; color: var(--muted); min-height: 18px;
+}
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.status-dot.ok      { background: var(--green); }
+.status-dot.error   { background: var(--red); }
+.status-dot.loading { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.status-text { flex: 1; }
+.song-count {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 6px; font-size: 10px; color: var(--muted);
+}
+
+/* ── TOOLBAR ────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;     /* desktop: single row */
+}
+.toolbar-sep {
+  width: 1px; height: 22px;
+  background: var(--border); flex-shrink: 0;
+}
+.toolbar-row {
+  display: contents; /* desktop: flat, items flow into toolbar */
+}
+.toolbar .btn { height: 36px; font-size: 12px; padding: 0 12px; }
+
+/* Mobile: two rows */
+@media (max-width: 540px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .toolbar-sep { display: none; }
+  .toolbar-row {
+    display: flex;
+    gap: 6px;
+  }
+  .toolbar-row .btn { flex: 1; }
+
+  /* order: main row first, history row second */
+  .toolbar-main    { order: 1; }
+  .toolbar-history { order: 2; }
+}
+
+/* ── EDITOR SHELL ───────────────────────── */
+.editor-wrap {
+  flex: 1; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  min-height: 300px;
+}
+.editor-titlebar {
+  padding: 6px 12px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  flex-shrink: 0;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-r { background: #f46868; }
+.dot-a { background: var(--amber); }
+.dot-g { background: var(--green); }
+.editor-filename { margin-left: 5px; }
+
+/* ── TEXTAREA ───────────────────────────── */
+#editor {
+  flex: 1;
+  width: 100%;
+  min-height: 280px;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.85;
+  padding: 12px 14px;
+  caret-color: var(--accent);
+  /* iOS: prevent zoom on focus */
+  font-size: max(14px, 16px);
+  /* smooth scroll on mobile */
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+/* back to 14px on large screens */
+@media (min-width: 541px) {
+  #editor { font-size: 14px; }
+}
+#editor::placeholder { color: var(--muted); }
+
+/* ── CONFIRM ────────────────────────────── */
+.confirm-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+  z-index: 200; display: flex; align-items: flex-end;
+  justify-content: center; padding-bottom: 20px;
+}
+.confirm-box {
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: var(--radius); padding: 20px;
+  width: calc(100% - 32px); max-width: 420px;
+  display: flex; flex-direction: column; gap: 16px;
+  animation: slide-up 0.17s ease;
+}
+@keyframes slide-up { from{transform:translateY(14px);opacity:0} to{transform:none;opacity:1} }
+.confirm-title { font-family: var(--mono); font-size: 14px; color: var(--text); }
+.confirm-sub   { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.confirm-btns  { display: flex; gap: 8px; }
+.confirm-btns .btn { flex: 1; height: 42px; }
+
+/* ── TOAST ──────────────────────────────── */
+#toast-container {
+  position: fixed; top: 54px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px;
+  align-items: center; pointer-events: none; z-index: 300;
+}
+.toast {
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: 20px; padding: 7px 16px;
+  font-family: var(--mono); font-size: 12px; color: var(--text);
+  animation: t-in 0.2s ease, t-out 0.2s ease 2s forwards;
+  white-space: nowrap;
+}
+.toast.ok  { border-color: rgba(62,207,142,0.4); color: var(--green); }
+.toast.err { border-color: rgba(244,104,104,0.4); color: var(--red); }
+@keyframes t-in  { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none} }
+@keyframes t-out { to{opacity:0} }
+
+/* ── SPINNER ────────────────────────────── */
+.spinner {
+  display: inline-block; width: 13px; height: 13px;
+  border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff;
+  border-radius: 50%; animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">
+    <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+      <rect x="2" y="8" width="14" height="2" rx="1" fill="white"/>
+      <rect x="2" y="4" width="8"  height="2" rx="1" fill="rgba(255,255,255,0.5)"/>
+      <rect x="2" y="12" width="11" height="2" rx="1" fill="rgba(255,255,255,0.5)"/>
+    </svg>
+  </div>
+  <h1>TimeCode<span>-Lab</span></h1>
+  <span class="header-badge">mini</span>
+  <span class="header-sub">streamersonglist</span>
+</header>
+
+<main>
+  <!-- Streamer picker -->
+  <div class="input-row">
+    <div class="streamer-select-wrap">
+      <select class="streamer-select" id="streamer-select" onchange="onSelectChange(this)">
+				<option value="vanilla__bun">vanilla__bun</option>
+        <option value="gellert_lera">gellert_lera</option>        
+        <option value="__custom__">другой стример...</option>
+      </select>
+      <span class="select-arrow">▼</span>
+      <input class="streamer-input" id="streamer-input" type="text"
+        placeholder="имя или ID стримера..." autocomplete="off" spellcheck="false"/>
+    </div>
+    <button class="btn btn-primary" id="btn-load" onclick="loadSongs()">
+      <span id="load-label">загрузить</span>
+    </button>
+  </div>
+
+  <!-- Status -->
+  <div class="status-bar">
+    <div class="status-dot" id="status-dot"></div>
+    <span class="status-text" id="status-text">выберите стримера</span>
+    <span class="song-count" id="song-count" style="display:none"></span>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-row toolbar-history">
+      <button class="btn" id="btn-undo" onclick="edUndo()" title="Ctrl+Z">↩ отмена</button>
+      <button class="btn" id="btn-redo" onclick="edRedo()" title="Ctrl+Y">↪ повтор</button>
+    </div>
+    <div class="toolbar-sep"></div>
+    <div class="toolbar-row toolbar-main">
+      <button class="btn btn-green" onclick="calcTimecodes()">⏱ таймкоды</button>
+      <button class="btn" onclick="copyText()">⎘ копировать</button>
+      <button class="btn" onclick="clearEditor()">✕ очистить</button>
+    </div>
+  </div>
+
+  <!-- Editor -->
+  <div class="editor-wrap">
+    <div class="editor-titlebar">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-a"></div>
+      <div class="dot dot-g"></div>
+      <span class="editor-filename">timecodes.txt</span>
+    </div>
+    <textarea id="editor"
+      placeholder="загрузите стример чтобы начать…"
+      spellcheck="false"
+      autocorrect="off"
+      autocapitalize="off"
+      autocomplete="off"
+    ></textarea>
+  </div>
+</main>
+
+<!-- Confirm dialog -->
+<div id="confirm-overlay" class="confirm-overlay" style="display:none" onclick="confirmBgClick(event)">
+  <div class="confirm-box">
+    <div>
+      <div class="confirm-title" id="confirm-title">Подтверждение</div>
+      <div class="confirm-sub"  id="confirm-sub"></div>
+    </div>
+    <div class="confirm-btns">
+      <button class="btn" onclick="confirmCancel()">отмена</button>
+      <button class="btn btn-danger" id="confirm-ok-btn" onclick="confirmOk()">ОК</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+'use strict';
+
+// ── Constants ─────────────────────────────────────────────────
+const API_BASE      = 'https://api.streamersonglist.com/v1';
+const GAP_THRESHOLD = 6 * 60 * 60 * 1000;
+const STORAGE_KEY   = 'tclab_mini_v1';
+const KNOWN_IDS     = { 'gellert_lera': 28268, 'vanilla__bun': 39650 };
+const SEP           = ' \u2013 '; // ' – '
+
+// ── State ─────────────────────────────────────────────────────
+let playedAtArr = [];
+let undoStack   = [];   // array of text strings
+let redoStack   = [];
+let saveTimer   = null;
+let confirmCb   = null;
+
+// ── Init ──────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    getEditor().value = saved;
+    setStatus('', 'восстановлено из localStorage', false);
+  }
+
+  document.getElementById('streamer-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadSongs();
+  });
+  document.getElementById('streamer-input').addEventListener('blur', () => {
+    const inp = document.getElementById('streamer-input');
+    const sel = document.getElementById('streamer-select');
+    if (!inp.value.trim()) {
+      inp.classList.remove('visible');
+      sel.style.display = '';
+      sel.value = 'gellert_lera';
+    }
+  });
+
+  const ed = getEditor();
+  ed.addEventListener('keydown', onEditorKeyDown);
+  ed.addEventListener('input',   onEditorInput);
+
+  updateUndoBtns();
+});
+
+function getEditor() { return document.getElementById('editor'); }
+
+// ── Editor input: autosave + undo snapshot ────────────────────
+let inputTimer = null;
+function onEditorInput() {
+  // debounce undo snapshot: push after 600ms of inactivity
+  clearTimeout(inputTimer);
+  inputTimer = setTimeout(() => {
+    pushUndo(getEditor().value);
+  }, 600);
+  scheduleSave();
+}
+
+function onEditorKeyDown(e) {
+  // Ctrl+Z / Ctrl+Y
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') { e.preventDefault(); edUndo(); return; }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); edRedo(); return; }
+}
+
+// ── Undo / Redo ───────────────────────────────────────────────
+// Stores text strings; cursor position not preserved (simple approach)
+function pushUndo(text) {
+  // Don't push duplicate
+  if (undoStack.length && undoStack[undoStack.length - 1] === text) return;
+  undoStack.push(text);
+  if (undoStack.length > 200) undoStack.shift();
+  redoStack = [];
+  updateUndoBtns();
+}
+
+function edUndo() {
+  const ed = getEditor();
+  if (undoStack.length <= 1) return; // keep at least one state
+  redoStack.push(undoStack.pop());
+  const prev = undoStack[undoStack.length - 1] ?? '';
+  ed.value = prev;
+  scheduleSave();
+  updateUndoBtns();
+}
+
+function edRedo() {
+  if (!redoStack.length) return;
+  const next = redoStack.pop();
+  undoStack.push(next);
+  getEditor().value = next;
+  scheduleSave();
+  updateUndoBtns();
+}
+
+function updateUndoBtns() {
+  document.getElementById('btn-undo').disabled = undoStack.length <= 1;
+  document.getElementById('btn-redo').disabled = redoStack.length === 0;
+}
+
+// ── Save ──────────────────────────────────────────────────────
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    localStorage.setItem(STORAGE_KEY, getEditor().value);
+  }, 400);
+}
+
+// ── Load songs (API — original logic) ─────────────────────────
+function onSelectChange(sel) {
+  const inp = document.getElementById('streamer-input');
+  if (sel.value === '__custom__') {
+    sel.style.display = 'none';
+    inp.classList.add('visible');
+    inp.focus();
+  }
+}
+
+async function resolveStreamerId(nameOrId) {
+  if (/^\d+$/.test(nameOrId)) return parseInt(nameOrId, 10);
+  if (KNOWN_IDS[nameOrId] !== undefined) return KNOWN_IDS[nameOrId];
+  const r = await fetch(`${API_BASE}/streamers/${encodeURIComponent(nameOrId)}`);
+  if (!r.ok) {
+    if (r.status === 404) throw new Error(`стример «${nameOrId}» не найден`);
+    throw new Error(`ошибка API: ${r.status}`);
+  }
+  const d = await r.json();
+  if (!d.id) throw new Error('не удалось получить ID стримера');
+  return d.id;
+}
+
+async function loadSongs() {
+  const sel = document.getElementById('streamer-select');
+  const inp = document.getElementById('streamer-input');
+  const isCustom = inp.classList.contains('visible');
+  const nameOrId = isCustom ? inp.value.trim() : sel.value;
+  if (!nameOrId || nameOrId === '__custom__') { toast('введите имя стримера', 'err'); return; }
+
+  setStatus('loading', 'получаем данные…', false);
+  setBtnLoading(true);
+
+  try {
+    const sid = await resolveStreamerId(nameOrId);
+    const hr  = await fetch(`${API_BASE}/streamers/${sid}/playHistory?size=100&current=0`);
+    if (!hr.ok) throw new Error(`ошибка истории: ${hr.status}`);
+    const hd    = await hr.json();
+    const items = hd.items || hd.data || hd;
+    if (!Array.isArray(items) || !items.length) throw new Error('история воспроизведения пуста');
+
+    const ls = extractLastStream(items);
+    if (!ls.length) throw new Error('не удалось определить последний стрим');
+    ls.reverse();
+
+    playedAtArr = ls.map(x => new Date(x.playedAt).getTime());
+    const text  = ls.map(x => `✨00:00:00${SEP}${normalizeSong(x)}`).join('\n');
+
+    const ed = getEditor();
+    pushUndo(ed.value); // save previous state before overwrite
+    ed.value = text;
+    pushUndo(text);
+    scheduleSave();
+
+    setStatus('ok', `${nameOrId} — последний стрим`, true, ls.length);
+    toast(`загружено ${ls.length} песен`, 'ok');
+  } catch (err) {
+    setStatus('error', err.message || 'неизвестная ошибка', false);
+    toast(err.message || 'ошибка загрузки', 'err');
+  } finally {
+    setBtnLoading(false);
+  }
+}
+
+function extractLastStream(items) {
+  const r = [items[0]];
+  for (let i = 1; i < items.length; i++) {
+    const prev = new Date(items[i - 1].playedAt).getTime();
+    const curr = new Date(items[i].playedAt).getTime();
+    if (prev - curr > GAP_THRESHOLD) break;
+    r.push(items[i]);
+  }
+  return r;
+}
+
+function normalizeSong(item) {
+  if (item.song) {
+    const { artist = '', title = '' } = item.song;
+    if (artist.trim().toLowerCase().startsWith('из')) return `${title} ${artist}`.trim();
+    return `${artist} - ${title}`.trim();
+  }
+  if (item.nonlistSong) return item.nonlistSong.trim();
+  const r0 = item.requests && item.requests[0];
+  if (r0 && r0.nonlistSong) return r0.nonlistSong.trim();
+  return 'Неизвестная песня';
+}
+
+// ── Timecode recalc (original logic) ──────────────────────────
+function calcTimecodes() {
+  const ed  = getEditor();
+  const raw = ed.value;
+  if (!raw.trim()) { toast('редактор пуст', 'err'); return; }
+  if (!playedAtArr.length) { toast('сначала загрузите список', 'err'); return; }
+
+  const TC_RE = /^(\d{1,2}:\d{2}:\d{2})\s*[–—-]\s*(.+)$/;
+  const lines  = raw.split('\n');
+
+  const parsed = lines.map(line => {
+    const m = line.match(TC_RE);
+    return m ? { time: parseTC(m[1]), text: m[2].trim() } : null;
+  });
+
+  const validIdx = [];
+  parsed.forEach((p, i) => { if (p !== null) validIdx.push(i); });
+  if (!validIdx.length) { toast('нет строк в нужном формате', 'err'); return; }
+
+  let anchorIdx = -1;
+  for (let vi = 0; vi < validIdx.length; vi++) {
+    if (parsed[validIdx[vi]].time !== 0) { anchorIdx = vi; break; }
+  }
+  if (anchorIdx === -1) { toast('нет якоря — задайте один таймкод', 'err'); return; }
+
+  const count   = Math.min(validIdx.length, playedAtArr.length);
+  const ancSec  = parsed[validIdx[anchorIdx]].time;
+
+  // forward
+  let t = ancSec;
+  for (let vi = anchorIdx; vi < count; vi++) {
+    if (vi > anchorIdx) { t += Math.round((playedAtArr[vi] - playedAtArr[vi - 1]) / 1000); if (t < 0) t = 0; }
+    parsed[validIdx[vi]].time = t;
+  }
+  // backward
+  t = ancSec;
+  for (let vi = anchorIdx - 1; vi >= 0; vi--) {
+    t -= Math.round((playedAtArr[vi + 1] - playedAtArr[vi]) / 1000); if (t < 0) t = 0;
+    parsed[validIdx[vi]].time = t;
+  }
+
+  const newLines = lines.map((line, i) => {
+    if (parsed[i] === null) return line;
+    return `${formatTC(parsed[i].time)}${SEP}${parsed[i].text}`;
+  });
+
+  const newText = newLines.join('\n');
+  pushUndo(ed.value);
+  ed.value = newText;
+  pushUndo(newText);
+  scheduleSave();
+  toast('таймкоды пересчитаны', 'ok');
+}
+
+// ── Copy ──────────────────────────────────────────────────────
+async function copyText() {
+  const text = getEditor().value;
+  if (!text.trim()) { toast('нечего копировать', 'err'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('скопировано', 'ok');
+  } catch {
+    // fallback
+    const ed = getEditor();
+    ed.select();
+    document.execCommand('copy');
+    toast('скопировано', 'ok');
+  }
+}
+
+// ── Clear ─────────────────────────────────────────────────────
+function clearEditor() {
+  showConfirm('Очистить редактор?', 'Текст и таймкоды будут удалены', 'очистить', () => {
+    const ed = getEditor();
+    pushUndo(ed.value);
+    ed.value = '';
+    playedAtArr = [];
+    scheduleSave();
+    setStatus('', 'редактор очищен', false);
+    toast('очищено', '');
+    updateUndoBtns();
+  });
+}
+
+// ── TC helpers ────────────────────────────────────────────────
+function parseTC(s) {
+  const p = s.split(':').map(Number);
+  return p.length === 3 ? p[0]*3600 + p[1]*60 + p[2] : p.length === 2 ? p[0]*60 + p[1] : 0;
+}
+function formatTC(sec) {
+  const s = Math.max(0, Math.round(sec));
+  return `${pad(Math.floor(s/3600))}:${pad(Math.floor((s%3600)/60))}:${pad(s%60)}`;
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+
+// ── UI helpers ────────────────────────────────────────────────
+function setStatus(type, msg, showCount, count) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  const cnt = document.getElementById('song-count');
+  dot.className = 'status-dot' + (type === 'ok' ? ' ok' : type === 'error' ? ' error' : type === 'loading' ? ' loading' : '');
+  txt.textContent = msg;
+  cnt.style.display = (showCount && count) ? '' : 'none';
+  if (showCount && count) cnt.textContent = `${count} песен`;
+}
+
+function setBtnLoading(loading) {
+  const btn = document.getElementById('btn-load');
+  const lbl = document.getElementById('load-label');
+  btn.disabled = loading;
+  lbl.innerHTML = loading ? '<span class="spinner"></span>' : 'загрузить';
+}
+
+function toast(msg, type) {
+  const c  = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
+
+function showConfirm(title, sub, okLabel, cb) {
+  document.getElementById('confirm-title').textContent    = title;
+  document.getElementById('confirm-sub').textContent      = sub;
+  document.getElementById('confirm-ok-btn').textContent   = okLabel;
+  confirmCb = cb;
+  document.getElementById('confirm-overlay').style.display = 'flex';
+}
+function confirmOk()    { document.getElementById('confirm-overlay').style.display = 'none'; if (confirmCb) { confirmCb(); confirmCb = null; } }
+function confirmCancel(){ document.getElementById('confirm-overlay').style.display = 'none'; confirmCb = null; }
+function confirmBgClick(e){ if (e.target === document.getElementById('confirm-overlay')) confirmCancel(); }
+</script>
+</body>
+</html>
