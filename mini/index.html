@@ -560,10 +560,16 @@ function calcTimecodes() {
   const TC_RE = /^[^\d]*?(\d{1,2}:\d{2}:\d{2})\s*[–—-]\s*(.+)$/;
   const lines  = raw.split('\n');
 
-  const parsed = lines.map(line => {
-    const m = line.match(TC_RE);
-    return m ? { time: parseTC(m[1]), text: m[2].trim() } : null;
-  });
+	const parsed = lines.map(line => {
+		const m = line.match(TC_RE);
+		return m
+			? {
+					prefix: line.slice(0, m.index + m[0].indexOf(m[1])), // всё до времени
+					time: parseTC(m[1]),
+					text: m[2].trim()
+				}
+			: null;
+	});
 
   const validIdx = [];
   parsed.forEach((p, i) => { if (p !== null) validIdx.push(i); });
@@ -593,7 +599,7 @@ function calcTimecodes() {
 
   const newLines = lines.map((line, i) => {
     if (parsed[i] === null) return line;
-    return `${formatTC(parsed[i].time)}${SEP}${parsed[i].text}`;
+    return `${parsed[i].prefix}${formatTC(parsed[i].time)}${SEP}${parsed[i].text}`;
   });
 
   const newText = newLines.join('\n');
