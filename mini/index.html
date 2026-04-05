@@ -557,7 +557,7 @@ function calcTimecodes() {
   if (!raw.trim()) { toast('редактор пуст', 'err'); return; }
   if (!playedAtArr.length) { toast('сначала загрузите список', 'err'); return; }
 
-  const TC_RE = /^(\d{1,2}:\d{2}:\d{2})\s*[–—-]\s*(.+)$/;
+  const TC_RE = /^[^\d]*?(\d{1,2}:\d{2}:\d{2})\s*[–—-]\s*(.+)$/;
   const lines  = raw.split('\n');
 
   const parsed = lines.map(line => {
