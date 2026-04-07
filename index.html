@@ -967,5 +967,12 @@ function confirmOk()    { document.getElementById('confirm-overlay').style.displ
 function confirmCancel(){ document.getElementById('confirm-overlay').style.display = 'none'; confirmCb = null; }
 function confirmBgClick(e){ if (e.target === document.getElementById('confirm-overlay')) confirmCancel(); }
 </script>
+
+<!-- Vercel Web Analytics -->
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+
 </body>
 </html>

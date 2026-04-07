@@ -1,0 +1,9 @@
+{
+  "name": "timecode-lab-editor",
+  "version": "1.0.0",
+  "description": "TimeCode-Lab Editor with Vercel Analytics",
+  "scripts": {},
+  "dependencies": {
+    "@vercel/analytics": "^1.4.1"
+  }
+}
