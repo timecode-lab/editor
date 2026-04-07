@@ -1,24 +1,22 @@
 export default async function handler(req, res) {
-  // CORS (важно для браузера)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', '*');
 
-  // обработка preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
   try {
-    // путь после /api/proxy
-    const path = req.url.replace(/^\/api\/proxy/, '');
+    const endpoint = req.query.endpoint;
 
-    const targetUrl = 'https://api.streamersonglist.com' + path;
+    if (!endpoint) {
+      return res.status(400).json({ error: 'Не передан параметр endpoint' });
+    }
 
-    const response = await fetch(targetUrl, {
-      method: 'GET'
-    });
+    const targetUrl = 'https://api.streamersonglist.com' + endpoint;
 
+    const response = await fetch(targetUrl, { method: 'GET' });
     const text = await response.text();
 
     res.status(response.status);
@@ -27,9 +25,6 @@ export default async function handler(req, res) {
     return res.send(text);
 
   } catch (err) {
-    return res.status(500).json({
-      error: 'proxy_error',
-      message: err.message
-    });
+    return res.status(500).json({ error: 'proxy_error', message: err.message });
   }
 }
