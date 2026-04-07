@@ -573,7 +573,7 @@ async function loadSongs() {
     ls.reverse();
 
     playedAtArr = ls.map(x => new Date(x.playedAt).getTime());
-    const text  = ls.map(x => `00:00:00${SEP}${normalizeSong(x)}`).join('\n');
+		const text  = ls.map(x => `0:00:00${SEP}${normalizeSong(x)}`).join('\n');
 
     const ed = getEditor();
     pushUndo(ed.value); // save previous state before overwrite
@@ -590,58 +590,55 @@ async function loadSongs() {
   }
 }
 
-async function fetchWithFallback(path, proxyDelay = 3000) {
+async function fetchWithFallback(path, proxyDelay = 1000) {
   const startTime = Date.now();
-  const controller = new AbortController();
+
+  const directController = new AbortController();
+  const proxyController  = new AbortController();
 
   const toProxyUrl = (path) =>
     `${API_PROXY}?endpoint=${encodeURIComponent(path)}`;
 
-	const requestTask = async (url, label, delay = 0) => {
-		if (delay) {
-			await new Promise(r => setTimeout(r, delay));
-		}
+  const requestTask = async (url, label, controller, delay = 0) => {
+    if (delay) {
+      await new Promise(r => setTimeout(r, delay));
+    }
 
-		try {
-			const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(url, { signal: controller.signal });
 
-			if (!response.ok) {
-				throw new Error(`${label} failed (${response.status})`);
-			}
+    if (!response.ok) {
+      throw new Error(`${label} failed (${response.status})`);
+    }
 
-			const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-			console.log(`[TCLab] ${label} success in ${duration}s`);
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(`[TCLab] ${label} success in ${duration}s`);
 
-			return response;
-
-		} catch (err) {
-			// 🔥 ВАЖНО: игнорируем abort
-			if (err.name === 'AbortError') {
-				throw new Error('Cancelled');
-			}
-
-			throw err;
-		}
-	};
+    return { response, label };
+  };
 
   const directTask = requestTask(
     API_BASE + path,
-    'Direct API'
+    'Direct API',
+    directController
   );
 
   const proxyTask = requestTask(
     toProxyUrl(path),
     'Proxy API',
+    proxyController,
     proxyDelay
   );
 
   try {
-    const result = await Promise.any([directTask, proxyTask]);
+    const winner = await Promise.any([directTask, proxyTask]);
 
-    // останавливаем второй запрос
-    controller.abort();
+    if (winner.label === 'Direct API') {
+      proxyController.abort();
+    } else {
+      directController.abort();
+    }
 
-    return result;
+    return winner.response;
 
   } catch (err) {
     if (err instanceof AggregateError) {
@@ -912,10 +909,17 @@ function parseTC(s) {
   const p = s.split(':').map(Number);
   return p.length === 3 ? p[0]*3600 + p[1]*60 + p[2] : p.length === 2 ? p[0]*60 + p[1] : 0;
 }
+
 function formatTC(sec) {
   const s = Math.max(0, Math.round(sec));
-  return `${pad(Math.floor(s/3600))}:${pad(Math.floor((s%3600)/60))}:${pad(s%60)}`;
+
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+
+  return `${h}:${pad(m)}:${pad(ss)}`;
 }
+
 function pad(n) { return String(n).padStart(2, '0'); }
 
 // ── UI helpers ────────────────────────────────────────────────
