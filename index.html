@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TimeCode-Lab</title>
+<link rel="icon" href="data:,">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:        #0e0e10;
+  --surface:   #18181b;
+  --surface2:  #222226;
+  --border:    #2e2e34;
+  --border2:   #3d3d45;
+  --text:      #e8e8f0;
+  --muted:     #8888a0;
+  --accent:    #7c6af7;
+  --green:     #3ecf8e;
+  --green-dim: rgba(62,207,142,0.12);
+  --red:       #f46868;
+  --amber:     #f5a623;
+  --mono: 'JetBrains Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+  --radius:    10px;
+  --radius-sm: 6px;
+}
+
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+/* ── HEADER ─────────────────────────────── */
+header {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 10px;
+  background: var(--surface);
+  position: sticky; top: 0; z-index: 10;
+  flex-shrink: 0;
+}
+.logo-mark {
+  width: 28px; height: 28px; background: var(--accent);
+  border-radius: 7px; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.logo-mark svg { display: block; }
+header h1 {
+  font-family: var(--mono); font-size: 14px; font-weight: 700;
+  letter-spacing: -0.3px; color: var(--text);
+}
+header h1 span { color: var(--accent); }
+.header-sub { font-size: 11px; color: var(--muted); margin-left: auto; font-family: var(--mono); }
+
+/* ── MAIN ───────────────────────────────── */
+main {
+  flex: 1; display: flex; flex-direction: column;
+  padding: 13px; gap: 11px;
+  max-width: 760px; width: 100%; margin: 0 auto;
+}
+
+/* ── INPUT ROW ──────────────────────────── */
+.input-row { display: flex; gap: 8px; align-items: stretch; }
+.streamer-select-wrap { flex: 1; position: relative; display: flex; flex-direction: column; }
+.streamer-select {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text); font-family: var(--mono);
+  font-size: 14px; padding: 0 32px 0 12px; height: 44px; outline: none;
+  cursor: pointer; -webkit-appearance: none; appearance: none; transition: border-color 0.15s;
+}
+.streamer-select:focus { border-color: var(--accent); }
+.streamer-select option { background: var(--surface2); color: var(--text); }
+.select-arrow {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  pointer-events: none; color: var(--muted); font-size: 9px;
+}
+.streamer-input {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text); font-family: var(--mono);
+  font-size: 14px; padding: 0 12px; height: 44px; outline: none;
+  transition: border-color 0.15s; display: none;
+}
+.streamer-input::placeholder { color: var(--muted); }
+.streamer-input:focus { border-color: var(--accent); }
+.streamer-input.visible { display: block; }
+
+/* ── BUTTONS ────────────────────────────── */
+.btn {
+  height: 44px; padding: 0 16px;
+  border-radius: var(--radius-sm); border: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+  font-family: var(--mono); font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s, opacity 0.12s;
+  white-space: nowrap; display: flex; align-items: center; justify-content: center; gap: 5px;
+  flex-shrink: 0; -webkit-user-select: none; user-select: none;
+  touch-action: manipulation;
+}
+.btn:hover  { background: var(--surface2); border-color: var(--border2); }
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: 0.3; pointer-events: none; }
+
+.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary:hover { background: #6a5be0; border-color: #6a5be0; }
+
+.btn-green { background: var(--green-dim); border-color: rgba(62,207,142,0.35); color: var(--green); }
+.btn-green:hover { background: rgba(62,207,142,0.22); }
+
+.btn-danger { background: rgba(244,104,104,0.12); border-color: rgba(244,104,104,0.35); color: var(--red); }
+.btn-danger:hover { background: rgba(244,104,104,0.22); }
+
+/* ── STATUS ─────────────────────────────── */
+.status-bar {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--mono); font-size: 11px; color: var(--muted); min-height: 18px;
+}
+.status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.status-dot.ok      { background: var(--green); }
+.status-dot.error   { background: var(--red); }
+.status-dot.loading { background: var(--accent); animation: pulse 1s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+.status-text { flex: 1; }
+.song-count {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 4px; padding: 1px 6px; font-size: 10px; color: var(--muted);
+}
+
+/* ── TOOLBAR ────────────────────────────── */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;     /* desktop: single row */
+}
+.toolbar-sep {
+  width: 1px; height: 22px;
+  background: var(--border); flex-shrink: 0;
+}
+.toolbar-row {
+  display: contents; /* desktop: flat, items flow into toolbar */
+}
+.toolbar .btn { height: 36px; font-size: 12px; padding: 0 12px; }
+
+/* Mobile: two rows */
+@media (max-width: 540px) {
+  .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .toolbar-sep { display: none; }
+  .toolbar-row {
+    display: flex;
+    gap: 6px;
+  }
+  .toolbar-row .btn { flex: 1; }
+
+  /* order: main row first, history row second */
+  .toolbar-main    { order: 1; }
+  .toolbar-history { order: 2; }
+}
+
+/* ── EDITOR SHELL ───────────────────────── */
+.editor-wrap {
+  flex: 1; display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+  min-height: 300px;
+}
+.editor-titlebar {
+  padding: 6px 12px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--mono); font-size: 10px; color: var(--muted);
+  flex-shrink: 0;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot-r { background: #f46868; }
+.dot-a { background: var(--amber); }
+.dot-g { background: var(--green); }
+.editor-filename { margin-left: 5px; }
+
+/* ── TEXTAREA ───────────────────────────── */
+#editor {
+  flex: 1;
+  width: 100%;
+  min-height: 280px;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.85;
+  padding: 12px 14px;
+  caret-color: var(--accent);
+  /* iOS: prevent zoom on focus */
+  font-size: max(14px, 16px);
+  /* smooth scroll on mobile */
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+/* back to 14px on large screens */
+@media (min-width: 541px) {
+  #editor { font-size: 14px; }
+}
+#editor::placeholder { color: var(--muted); }
+
+/* ── CONFIRM ────────────────────────────── */
+.confirm-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+  z-index: 200; display: flex; align-items: flex-end;
+  justify-content: center; padding-bottom: 20px;
+}
+.confirm-box {
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: var(--radius); padding: 20px;
+  width: calc(100% - 32px); max-width: 420px;
+  display: flex; flex-direction: column; gap: 16px;
+  animation: slide-up 0.17s ease;
+}
+@keyframes slide-up { from{transform:translateY(14px);opacity:0} to{transform:none;opacity:1} }
+.confirm-title { font-family: var(--mono); font-size: 14px; color: var(--text); }
+.confirm-sub   { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.confirm-btns  { display: flex; gap: 8px; }
+.confirm-btns .btn { flex: 1; height: 42px; }
+
+/* ── TOAST ──────────────────────────────── */
+#toast-container {
+  position: fixed; top: 54px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 8px;
+  align-items: center; pointer-events: none; z-index: 300;
+}
+.toast {
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: 20px; padding: 7px 16px;
+  font-family: var(--mono); font-size: 12px; color: var(--text);
+  animation: t-in 0.2s ease, t-out 0.2s ease 2s forwards;
+  white-space: nowrap;
+}
+.toast.ok  { border-color: rgba(62,207,142,0.4); color: var(--green); }
+.toast.err { border-color: rgba(244,104,104,0.4); color: var(--red); }
+@keyframes t-in  { from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none} }
+@keyframes t-out { to{opacity:0} }
+
+/* ── SPINNER ────────────────────────────── */
+.spinner {
+  display: inline-block; width: 13px; height: 13px;
+  border: 2px solid rgba(255,255,255,0.2); border-top-color: #fff;
+  border-radius: 50%; animation: spin 0.6s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo-mark">
+    <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+      <rect x="2" y="8" width="14" height="2" rx="1" fill="white"/>
+      <rect x="2" y="4" width="8"  height="2" rx="1" fill="rgba(255,255,255,0.5)"/>
+      <rect x="2" y="12" width="11" height="2" rx="1" fill="rgba(255,255,255,0.5)"/>
+    </svg>
+  </div>
+  <h1>TimeCode<span>-Lab</span></h1>
+  <span class="header-sub">streamersonglist</span>
+</header>
+
+<main>
+  <!-- Streamer picker -->
+  <div class="input-row">
+    <div class="streamer-select-wrap">
+      <select class="streamer-select" id="streamer-select" onchange="onSelectChange(this)">
+        <option value="__custom__">другой стример...</option>
+      </select>
+      <span class="select-arrow">▼</span>
+      <input class="streamer-input" id="streamer-input" type="text"
+        placeholder="имя или ID стримера..." autocomplete="off" spellcheck="false"/>
+    </div>
+    <button class="btn btn-primary" id="btn-load" onclick="loadSongs()">
+      <span id="load-label">загрузить</span>
+    </button>
+  </div>
+
+  <!-- Status -->
+  <div class="status-bar">
+    <div class="status-dot" id="status-dot"></div>
+    <span class="status-text" id="status-text">выберите стримера</span>
+    <span class="song-count" id="song-count" style="display:none"></span>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-row toolbar-history">
+      <button class="btn" id="btn-undo" onclick="edUndo()" title="Ctrl+Z">↩ отмена</button>
+      <button class="btn" id="btn-redo" onclick="edRedo()" title="Ctrl+Y">↪ повтор</button>
+    </div>
+    <div class="toolbar-sep"></div>
+    <div class="toolbar-row toolbar-main">
+      <button class="btn btn-green" onclick="calcTimecodes()">⏱ таймкоды</button>
+      <button class="btn" onclick="copyText()">⎘ копировать</button>
+      <button class="btn" onclick="clearEditor()">✕ очистить</button>
+    </div>
+  </div>
+
+  <!-- Editor -->
+  <div class="editor-wrap">
+    <div class="editor-titlebar">
+      <div class="dot dot-r"></div>
+      <div class="dot dot-a"></div>
+      <div class="dot dot-g"></div>
+      <span class="editor-filename">timecodes.txt</span>
+    </div>
+    <textarea id="editor"
+      placeholder="загрузите стример чтобы начать…"
+      spellcheck="false"
+      autocorrect="off"
+      autocapitalize="off"
+      autocomplete="off"
+    ></textarea>
+  </div>
+</main>
+
+<!-- Confirm dialog -->
+<div id="confirm-overlay" class="confirm-overlay" style="display:none" onclick="confirmBgClick(event)">
+  <div class="confirm-box">
+    <div>
+      <div class="confirm-title" id="confirm-title">Подтверждение</div>
+      <div class="confirm-sub"  id="confirm-sub"></div>
+    </div>
+    <div class="confirm-btns">
+      <button class="btn" onclick="confirmCancel()">отмена</button>
+      <button class="btn btn-danger" id="confirm-ok-btn" onclick="confirmOk()">ОК</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<script>
+'use strict';
+
+// ── Constants ─────────────────────────────────────────────────
+const API_BASE      = 'https://api.streamersonglist.com/v1';
+const API_PROXY			= 'https://TEMP_PLACEHOLDER'
+const GAP_THRESHOLD = 6 * 60 * 60 * 1000;
+const STORAGE_KEY   = 'tclab_v1';
+const KNOWN_IDS     = { 'vanilla__bun': 39650, 'gellert_lera': 28268, 'maniavolk': 39141 };
+const SEP           = ' \u2013 ';
+
+// ── State ─────────────────────────────────────────────────────
+let playedAtArr = [];
+let undoStack   = [];
+let redoStack   = [];
+let saveTimer   = null;
+let confirmCb   = null;
+let currentStreamer = null;
+
+// ── Streamer helpers ──────────────────────────────────────────
+function getStreamerFromURL() {
+  const hash = window.location.hash.replace('#', '').trim();
+  if (!hash) return null;
+  return KNOWN_IDS[hash] ? hash : null;
+}
+
+function setStreamerToURL(name) {
+  if (!name) history.replaceState(null, '', window.location.pathname);
+  else history.replaceState(null, '', `#${name}`);
+}
+
+function saveStreamer(name) {
+  if (name) localStorage.setItem('tclab_streamer', name);
+  else localStorage.removeItem('tclab_streamer');
+}
+
+function loadStreamer() {
+  return localStorage.getItem('tclab_streamer');
+}
+
+// ── Init ──────────────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', () => {
+
+  // восстановление текста
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+		getEditor().value = saved;
+		pushUndo(saved);    
+    setStatus('', 'восстановлено из localStorage', false);		
+  } else {
+	pushUndo('');
+	}
+
+  const sel = document.getElementById('streamer-select');
+  const inp = document.getElementById('streamer-input');
+
+  // ── генерируем список ──
+  sel.innerHTML = '';
+
+  Object.keys(KNOWN_IDS).forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  });
+
+  const optCustom = document.createElement('option');
+  optCustom.value = '__custom__';
+  optCustom.textContent = 'другой стример...';
+  sel.appendChild(optCustom);
+
+  // ── INIT streamer ──
+  const urlStreamer   = getStreamerFromURL();
+  const savedStreamer = loadStreamer();
+
+  if (urlStreamer) {
+    currentStreamer = urlStreamer;
+  } else if (savedStreamer && KNOWN_IDS[savedStreamer]) {
+    currentStreamer = savedStreamer;
+  } else {
+    currentStreamer = null;
+  }
+
+  if (currentStreamer) {
+    sel.value = currentStreamer;
+  } else {
+    sel.value = '__custom__';
+  }
+
+  // ── events ──
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') loadSongs();
+  });
+
+  inp.addEventListener('blur', () => {
+    if (!inp.value.trim()) {
+      inp.classList.remove('visible');
+      sel.style.display = '';
+
+      if (currentStreamer) {
+        sel.value = currentStreamer;
+      } else {
+        sel.value = '__custom__';
+      }
+    }
+  });
+
+  const ed = getEditor();
+  ed.addEventListener('keydown', onEditorKeyDown);
+  ed.addEventListener('input',   onEditorInput);
+
+  updateUndoBtns();
+});
+
+function getEditor() { return document.getElementById('editor'); }
+
+// ── Editor input ──────────────────────────────────────────────
+let inputTimer = null;
+
+function onEditorInput() {
+  clearTimeout(inputTimer);
+
+  inputTimer = setTimeout(() => {
+    const val = getEditor().value;
+    pushUndo(val);
+    localStorage.setItem(STORAGE_KEY, val);
+  }, 600);
+}
+
+function onEditorKeyDown(e) {
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+    e.preventDefault(); edUndo(); return;
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+    e.preventDefault(); edRedo(); return;
+  }
+}
+
+// ── Undo / Redo ───────────────────────────────────────────────
+function pushUndo(text) {
+  if (undoStack.length && undoStack[undoStack.length - 1] === text) return;
+  undoStack.push(text);
+  if (undoStack.length > 200) undoStack.shift();
+  redoStack = [];
+  updateUndoBtns();
+}
+
+function edUndo() {
+  const ed = getEditor();
+  if (undoStack.length <= 1) return;
+  redoStack.push(undoStack.pop());
+  ed.value = undoStack[undoStack.length - 1] ?? '';
+  updateUndoBtns();
+}
+
+function edRedo() {
+  if (!redoStack.length) return;
+  const next = redoStack.pop();
+  undoStack.push(next);
+  getEditor().value = next;
+  updateUndoBtns();
+}
+
+function updateUndoBtns() {
+  document.getElementById('btn-undo').disabled = undoStack.length <= 1;
+  document.getElementById('btn-redo').disabled = redoStack.length === 0;
+}
+
+// ── Select change ─────────────────────────────────────────────
+function onSelectChange(sel) {
+  const inp = document.getElementById('streamer-input');
+
+  if (sel.value === '__custom__') {
+    currentStreamer = null;
+    setStreamerToURL(null);
+    saveStreamer(null);
+
+    sel.style.display = 'none';
+    inp.classList.add('visible');
+    inp.focus();
+    return;
+  }
+
+  currentStreamer = sel.value;
+  setStreamerToURL(currentStreamer);
+  saveStreamer(currentStreamer);
+}
+
+async function resolveStreamerId(nameOrId) {
+  if (/^\d+$/.test(nameOrId)) return parseInt(nameOrId, 10);
+  if (KNOWN_IDS[nameOrId] !== undefined) return KNOWN_IDS[nameOrId];
+  const r = await fetchWithFallback(`/streamers/${encodeURIComponent(nameOrId)}`);
+  if (!r.ok) {
+    if (r.status === 404) throw new Error(`стример «${nameOrId}» не найден`);
+    throw new Error(`ошибка API: ${r.status}`);
+  }
+  const d = await r.json();
+  if (!d.id) throw new Error('не удалось получить ID стримера');
+  return d.id;
+}
+
+async function loadSongs() {
+	if (document.getElementById('btn-load').disabled) return;
+  const sel = document.getElementById('streamer-select');
+  const inp = document.getElementById('streamer-input');
+  const isCustom = inp.classList.contains('visible');
+  const nameOrId = isCustom ? inp.value.trim() : sel.value;
+  if (!nameOrId || nameOrId === '__custom__') { toast('введите имя стримера', 'err'); return; }
+
+  setStatus('loading', 'получаем данные…', false);
+  setBtnLoading(true);
+
+  try {
+    const sid = await resolveStreamerId(nameOrId);
+    const hr  = await fetchWithFallback(`/streamers/${sid}/playHistory?size=100&current=0`);
+    if (!hr.ok) throw new Error(`ошибка истории: ${hr.status}`);
+    const hd    = await hr.json();
+    const items = hd.items || hd.data || hd;
+    if (!Array.isArray(items) || !items.length) throw new Error('история воспроизведения пуста');
+
+    const ls = extractLastStream(items);
+    if (!ls.length) throw new Error('не удалось определить последний стрим');
+    ls.reverse();
+
+    playedAtArr = ls.map(x => new Date(x.playedAt).getTime());
+    const text  = ls.map(x => `00:00:00${SEP}${normalizeSong(x)}`).join('\n');
+
+    const ed = getEditor();
+    pushUndo(ed.value); // save previous state before overwrite
+    ed.value = text;
+    pushUndo(text);
+
+    setStatus('ok', `${nameOrId} — последний стрим`, true, ls.length);
+    toast(`загружено ${ls.length} песен`, 'ok');
+  } catch (err) {
+    setStatus('error', err.message || 'неизвестная ошибка', false);
+    toast(err.message || 'ошибка загрузки', 'err');
+  } finally {
+    setBtnLoading(false);
+  }
+}
+
+async function fetchWithFallback(path, timeout = 2000) {
+  try {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+
+    const r = await fetch(API_BASE + path, {
+      signal: controller.signal
+    });
+
+    clearTimeout(id);
+
+    if (r.ok) return r;
+    throw new Error('direct not ok');
+
+  } catch (e) {
+    console.warn('Direct API failed → using proxy');
+  }
+
+  const r = await fetch(API_PROXY + path);
+
+  if (!r.ok) {
+    throw new Error(`proxy error: ${r.status}`);
+  }
+
+  return r;
+}
+
+function extractLastStream(items) {
+  const clean = items
+    .filter(x => x && x.playedAt)
+    .map(x => ({
+      ...x,
+      ts: new Date(x.playedAt).getTime()
+    }))
+    .filter(x => !isNaN(x.ts));
+
+  if (!clean.length) return [];
+
+  clean.sort((a, b) => b.ts - a.ts);
+
+  const result = [clean[0]];
+
+  for (let i = 1; i < clean.length; i++) {
+    const prev = clean[i - 1].ts;
+    const curr = clean[i].ts;
+
+    if (prev - curr > GAP_THRESHOLD) break;
+
+    result.push(clean[i]);
+  }
+
+  return result;
+}
+
+function normalizeSong(item) {
+  const song = item && typeof item.song === 'object' ? item.song : null;
+
+  if (song) {
+    const artist = (song.artist || '').trim();
+    const title  = (song.title  || '').trim();
+
+    if (artist.toLowerCase().startsWith('из')) {
+      return `${title} ${artist}`.trim();
+    }
+
+    return `${artist} - ${title}`.trim();
+  }
+
+  if (typeof item.nonlistSong === 'string') {
+    return item.nonlistSong.trim();
+  }
+
+  const r0 = item.requests && item.requests[0];
+  if (r0 && typeof r0.nonlistSong === 'string') {
+    return r0.nonlistSong.trim();
+  }
+
+  return 'Неизвестная песня';
+}
+
+let segmenter = null;
+try {
+  segmenter = new Intl.Segmenter('ru', { granularity: 'grapheme' });
+} catch {}
+
+function splitGraphemes(str) {
+  if (segmenter) {
+    return [...segmenter.segment(str)].map(s => s.segment);
+  }
+  return Array.from(str); // fallback
+}
+
+function isEmoji(char) {
+  return /\p{Extended_Pictographic}/u.test(char) && !/[0-9#*]/.test(char);
+}
+
+function extractEmojiPattern(lines) {
+  const left = [];
+  const right = [];
+
+  const TC_RE = /(\d{1,2}:\d{2}:\d{2})/;
+
+  for (const line of lines) {
+    if (!line.includes(SEP)) continue;
+
+    const [before] = line.split(SEP);
+    const m = before.match(TC_RE);
+    if (!m) continue;
+
+    const timeIdx = before.indexOf(m[1]);
+
+    const leftPart  = before.slice(0, timeIdx);
+    const rightPart = before.slice(timeIdx + m[1].length);
+
+		const leftEmoji  = splitGraphemes(leftPart).filter(isEmoji);
+		const rightEmoji = splitGraphemes(rightPart).filter(isEmoji);
+
+    if (leftEmoji.length)  left.push(...leftEmoji);
+    if (rightEmoji.length) right.push(...rightEmoji);
+  }
+
+  return {
+    left:  left.length  ? left  : null,
+    right: right.length ? right : null
+  };
+}
+
+function applyEmojiPattern(lines, pattern) {
+  if (!pattern.left && !pattern.right) return lines;
+
+  const TC_RE = /(\d{1,2}:\d{2}:\d{2})/;
+
+  let li = 0;
+  let ri = 0;
+
+  return lines.map(line => {
+    if (!line.includes(SEP)) return line;
+
+    const [before, after] = line.split(SEP);
+    const m = before.match(TC_RE);
+    if (!m) return line;
+
+    const time = m[1];
+
+    const leftEmoji  = pattern.left  ? pattern.left[li++ % pattern.left.length]   : '';
+    const rightEmoji = pattern.right ? pattern.right[ri++ % pattern.right.length] : '';
+
+    return `${leftEmoji}${time}${rightEmoji}${SEP}${after}`;
+  });
+}
+
+function calcTimecodes() {
+  const ed  = getEditor();
+  const raw = ed.value;
+
+  if (!raw.trim()) {
+    toast('редактор пуст', 'err');
+    return;
+  }
+
+  const lines = raw.split('\n');
+  const pattern = extractEmojiPattern(lines);
+  const TC_RE = /^[^\d]*?(\d{1,2}:\d{2}:\d{2})[^\d]*?[–—-]\s*(.+)$/;
+	const parsed = lines.map(line => {
+		const m = line.match(TC_RE);
+		if (!m) return null;
+
+		const timeStr = m[1];
+		const text    = m[2].trim();
+
+		const timePos = line.indexOf(timeStr);
+
+		return {
+			prefix: line.slice(0, timePos),
+			time: parseTC(timeStr),
+			text
+		};
+	});
+
+	const valid = parsed
+		.map((p, i) => p ? { ...p, idx: i } : null)
+		.filter(Boolean);
+
+	if (!valid.length) {
+		toast('нет строк в нужном формате', 'err');
+		return;
+	}
+
+	let anchorIdx = -1;
+	for (let i = 0; i < valid.length; i++) {
+		if (valid[i].time !== 0) {
+			anchorIdx = i;
+			break;
+		}
+	}
+
+	if (anchorIdx !== -1 && playedAtArr.length) {
+		const anchor = valid[anchorIdx];
+		let t = anchor.time;
+
+		// forward
+		for (let i = anchorIdx; i < valid.length; i++) {
+			if (i > anchorIdx) {
+				const d = playedAtArr[i] - playedAtArr[i - 1];
+				if (!isFinite(d)) break;
+				t += Math.round(d / 1000);
+			}
+			valid[i].time = t;
+		}
+
+		// backward
+		t = anchor.time;
+		for (let i = anchorIdx - 1; i >= 0; i--) {
+			const d = playedAtArr[i + 1] - playedAtArr[i];
+			if (!isFinite(d)) break;
+			t -= Math.round(d / 1000);
+			if (t < 0) t = 0;
+			valid[i].time = t;
+		}
+	}
+
+	let newLines = lines.map((line, i) => {
+		const p = valid.find(v => v.idx === i);
+		if (!p) return line;
+		return `${p.prefix}${formatTC(p.time)}${SEP}${p.text}`;
+	});
+
+  newLines = applyEmojiPattern(newLines, pattern);
+
+  const newText = newLines.join('\n');
+
+  pushUndo(ed.value);
+  ed.value = newText;
+  pushUndo(newText);
+
+	const hasEmoji = pattern.left || pattern.right;
+
+	if (anchorIdx !== -1) {
+		toast(
+			hasEmoji
+				? 'таймкоды пересчитаны + emoji'
+				: 'таймкоды пересчитаны',
+			'ok'
+		);
+	} else if (hasEmoji) {
+		toast('форматирование стиля', 'ok');
+	} else {
+		toast('введите начальный таймкод или добавьте emoji', 'err');
+	}
+}
+
+// ── Copy ──────────────────────────────────────────────────────
+async function copyText() {
+  const text = getEditor().value;
+  if (!text.trim()) { toast('нечего копировать', 'err'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('скопировано', 'ok');
+  } catch {
+    // fallback
+    const ed = getEditor();
+    ed.select();
+    document.execCommand('copy');
+    toast('скопировано', 'ok');
+  }
+}
+
+// ── Clear ─────────────────────────────────────────────────────
+function clearEditor() {
+  showConfirm('Очистить редактор?', 'Текст и таймкоды будут удалены', 'очистить', () => {
+    const ed = getEditor();
+    pushUndo(ed.value);
+    ed.value = '';
+    playedAtArr = [];
+    setStatus('', 'редактор очищен', false);
+    toast('очищено', '');
+    updateUndoBtns();
+  });
+}
+
+// ── TC helpers ────────────────────────────────────────────────
+function parseTC(s) {
+  const p = s.split(':').map(Number);
+  return p.length === 3 ? p[0]*3600 + p[1]*60 + p[2] : p.length === 2 ? p[0]*60 + p[1] : 0;
+}
+function formatTC(sec) {
+  const s = Math.max(0, Math.round(sec));
+  return `${pad(Math.floor(s/3600))}:${pad(Math.floor((s%3600)/60))}:${pad(s%60)}`;
+}
+function pad(n) { return String(n).padStart(2, '0'); }
+
+// ── UI helpers ────────────────────────────────────────────────
+function setStatus(type, msg, showCount, count) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  const cnt = document.getElementById('song-count');
+  dot.className = 'status-dot' + (type === 'ok' ? ' ok' : type === 'error' ? ' error' : type === 'loading' ? ' loading' : '');
+  txt.textContent = msg;
+  cnt.style.display = (showCount && count) ? '' : 'none';
+  if (showCount && count) cnt.textContent = `${count} песен`;
+}
+
+function setBtnLoading(loading) {
+  const btn = document.getElementById('btn-load');
+  const lbl = document.getElementById('load-label');
+  btn.disabled = loading;
+	lbl.textContent = '';
+	if (loading) {
+		const sp = document.createElement('span');
+		sp.className = 'spinner';
+		lbl.appendChild(sp);
+	} else {
+		lbl.textContent = 'загрузить';
+	}
+}
+
+function toast(msg, type) {
+  const c  = document.getElementById('toast-container');
+  const el = document.createElement('div');
+  el.className = 'toast' + (type ? ' ' + type : '');
+  el.textContent = msg;
+  c.appendChild(el);
+  setTimeout(() => el.remove(), 2500);
+}
+
+function showConfirm(title, sub, okLabel, cb) {
+  document.getElementById('confirm-title').textContent    = title;
+  document.getElementById('confirm-sub').textContent      = sub;
+  document.getElementById('confirm-ok-btn').textContent   = okLabel;
+  confirmCb = cb;
+  document.getElementById('confirm-overlay').style.display = 'flex';
+}
+function confirmOk()    { document.getElementById('confirm-overlay').style.display = 'none'; if (confirmCb) { confirmCb(); confirmCb = null; } }
+function confirmCancel(){ document.getElementById('confirm-overlay').style.display = 'none'; confirmCb = null; }
+function confirmBgClick(e){ if (e.target === document.getElementById('confirm-overlay')) confirmCancel(); }
+</script>
+</body>
+</html>
