@@ -353,7 +353,7 @@ main {
 
 // ── Constants ─────────────────────────────────────────────────
 const API_BASE      = 'https://api.streamersonglist.com/v1';
-const API_PROXY 	= '/api/proxy?endpoint=/v1';
+const API_PROXY		= '/api/proxy';
 const GAP_THRESHOLD = 6 * 60 * 60 * 1000;
 const STORAGE_KEY   = 'tclab_v1';
 const KNOWN_IDS     = { 'vanilla__bun': 39650, 'gellert_lera': 28268, 'maniavolk': 39141 };
@@ -590,31 +590,65 @@ async function loadSongs() {
   }
 }
 
-async function fetchWithFallback(path, timeout = 20000) {
+async function fetchWithFallback(path, proxyDelay = 3000) {
+  const startTime = Date.now();
+  const controller = new AbortController();
+
+  const toProxyUrl = (path) =>
+    `${API_PROXY}?endpoint=${encodeURIComponent(path)}`;
+
+  const requestTask = async (url, label, delay = 0) => {
+    if (delay) {
+      await new Promise(r => setTimeout(r, delay));
+    }
+
+    // если уже есть победитель — не стартуем
+    if (controller.signal.aborted) {
+      throw new Error('Cancelled');
+    }
+
+    const response = await fetch(url, { signal: controller.signal });
+
+    if (!response.ok) {
+      throw new Error(`${label} failed (${response.status})`);
+    }
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+    console.log(
+      `[TCLab] ${label} success in ${duration}s`
+    );
+
+    return response;
+  };
+
+  const directTask = requestTask(
+    API_BASE + path,
+    'Direct API'
+  );
+
+  const proxyTask = requestTask(
+    toProxyUrl(path),
+    'Proxy API',
+    proxyDelay
+  );
+
   try {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
+    const result = await Promise.any([directTask, proxyTask]);
 
-    const r = await fetch(API_BASE + path, {
-      signal: controller.signal
-    });
+    // останавливаем второй запрос
+    controller.abort();
 
-    clearTimeout(id);
+    return result;
 
-    if (r.ok) return r;
-    throw new Error('direct not ok');
+  } catch (err) {
+    if (err instanceof AggregateError) {
+      console.error('[TCLab] All requests failed:', err.errors);
+    } else {
+      console.error('[TCLab] Request failed:', err);
+    }
 
-  } catch (e) {
-    console.warn('Direct API failed → using proxy');
+    throw new Error('Не удалось получить данные (API и прокси недоступны)');
   }
-
-  const r = await fetch(API_PROXY + path);
-
-  if (!r.ok) {
-    throw new Error(`proxy error: ${r.status}`);
-  }
-
-  return r;
 }
 
 function extractLastStream(items) {
