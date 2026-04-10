@@ -686,7 +686,11 @@ function normalizeSong(item) {
     const title  = (song.title  || '').trim();
 
     if (artist.toLowerCase().startsWith('из')) {
-      return `${title} ${artist}`.trim();
+      return `${title} (${artist})`.trim();
+    }	  
+
+    if (artistLower === 'gellert lera') {
+      return `${artist} - ${title} (авторская)`.trim();
     }
 
     return `${artist} - ${title}`.trim();
