@@ -684,18 +684,20 @@ function normalizeSong(item) {
   if (song) {
     const artist = (song.artist || '').trim();
     const title  = (song.title  || '').trim();
+    const artistLower = artist.toLowerCase();
 
-    if (artist.toLowerCase().startsWith('из')) {
+    if (artistLower.startsWith('из')) {
       return `${title} (${artist})`.trim();
-    }	  
+    }
 
-    if (song.artist === 'gellert lera') {
+    if (artistLower === 'gellert lera') {
       return `${artist} - ${title} (авторская)`.trim();
     }
 
     return `${artist} - ${title}`.trim();
   }
 
+  // Обработка песен, введенных стримером вручную (nonlist)
   if (typeof item.nonlistSong === 'string') {
     return item.nonlistSong.trim();
   }
