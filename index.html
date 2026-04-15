@@ -288,7 +288,7 @@ main {
       <input class="streamer-input" id="streamer-input" type="text"
         placeholder="имя или ID стримера..." autocomplete="off" spellcheck="false"/>
     </div>
-    <button class="btn btn-primary" id="btn-load" onclick="loadSongs()">
+    <button class="btn btn-primary" id="btn-load">
       <span id="load-label">загрузить</span>
     </button>
   </div>
@@ -303,14 +303,14 @@ main {
   <!-- Toolbar -->
   <div class="toolbar">
     <div class="toolbar-row toolbar-history">
-      <button class="btn" id="btn-undo" onclick="edUndo()" title="Ctrl+Z">↩ отмена</button>
-      <button class="btn" id="btn-redo" onclick="edRedo()" title="Ctrl+Y">↪ повтор</button>
+      <button class="btn" id="btn-undo" title="Ctrl+Z">↩ отмена</button>
+      <button class="btn" id="btn-redo" title="Ctrl+Y">↪ повтор</button>
     </div>
     <div class="toolbar-sep"></div>
     <div class="toolbar-row toolbar-main">
-      <button class="btn btn-green" onclick="calcTimecodes()">⏱ таймкоды</button>
-      <button class="btn" onclick="copyText()">⎘ копировать</button>
-      <button class="btn" onclick="clearEditor()">✕ очистить</button>
+			<button class="btn btn-green" id="btn-timecodes">⏱ таймкоды</button>
+			<button class="btn" id="btn-copy">⎘ копировать</button>
+			<button class="btn" id="btn-clear">✕ очистить</button>
     </div>
   </div>
 
@@ -333,15 +333,15 @@ main {
 </main>
 
 <!-- Confirm dialog -->
-<div id="confirm-overlay" class="confirm-overlay" style="display:none" onclick="confirmBgClick(event)">
+<div id="confirm-overlay" class="confirm-overlay" style="display:none">
   <div class="confirm-box">
     <div>
       <div class="confirm-title" id="confirm-title">Подтверждение</div>
       <div class="confirm-sub"  id="confirm-sub"></div>
     </div>
     <div class="confirm-btns">
-      <button class="btn" onclick="confirmCancel()">отмена</button>
-      <button class="btn btn-danger" id="confirm-ok-btn" onclick="confirmOk()">ОК</button>
+			<button class="btn" id="confirm-cancel">отмена</button>
+			<button class="btn btn-danger" id="confirm-ok-btn">ОК</button>
     </div>
   </div>
 </div>
@@ -351,146 +351,444 @@ main {
 <script>
 'use strict';
 
-// ── Constants ─────────────────────────────────────────────────
-const API_BASE      = 'https://api.streamersonglist.com/v1';
-const API_PROXY 	= 'https://editor-lovat-beta.vercel.app/api/proxy';
-const GAP_THRESHOLD = 6 * 60 * 60 * 1000;
-const STORAGE_KEY   = 'tclab_v1';
-const KNOWN_IDS     = { 'vanilla__bun': 39650, 'gellert_lera': 28268, 'maniavolk': 39141 };
-const SEP           = ' \u2013 ';
+const API_BASE					= 'https://api.streamersonglist.com/v1';
+const API_PROXY					= 'https://editor-lovat-beta.vercel.app/api/proxy';
+const GAP_THRESHOLD			= 6 * 60 * 60 * 1000;
+const UNDO_LIMIT				= 200;
+const STORAGE_KEY				= 'tclab_v1';
+const STORAGE_STREAMER	= 'tclab_streamer';
+const KNOWN_IDS					= { 'vanilla__bun': 39650, 'gellert_lera': 28268 };
+const TIME_SEP					= ' \u2013 ';
+const TEXT_SEP					= ' - ';
 
-// ── State ─────────────────────────────────────────────────────
-let playedAtArr = [];
-let undoStack   = [];
-let redoStack   = [];
-let saveTimer   = null;
-let confirmCb   = null;
-let currentStreamer = null;
+let playedAtArr					= [];
+let undoStack						= [];
+let redoStack						= [];
+let confirmCb						= null;
+let currentStreamer			= null;
+let inputTimer					= null;
 
-// ── Streamer helpers ──────────────────────────────────────────
-function getStreamerFromURL() {
-  const hash = window.location.hash.replace('#', '').trim();
-  if (!hash) return null;
-  return KNOWN_IDS[hash] ? hash : null;
+const PRESETS = {
+
+  default: {
+    timeFormat: '0:00:00',
+    separator:  TIME_SEP,
+    text:   { rules: [{ type: 'default' }] },
+    visual: { mode: 'detect' },
+  },
+
+  gellert_lera: {
+    timeFormat: '0:00:00',
+    separator:  TIME_SEP,
+		header: 'Тайм-коды:',
+    text: {
+      rules: [
+        { type: 'fromPrefix', prefix: 'из' },
+        { type: 'authorTag', artist: 'gellert lera', suffix: ' (авторская)' },
+        { type: 'default' },
+      ],
+    },
+    visual: { mode: 'detect' },
+  },
+
+	vanilla__bun: {
+		timeFormat: '00:00:00',
+		separator:  TIME_SEP,
+		header: ['ТАЙМ-КОДЫ🌸', ''],
+		text:   { rules: [{ type: 'default' }] },
+		visual: {
+			mode: 'detect',
+			authorEmoji: {
+				matchArtist: 'vanilla bun',
+				left: '❤️‍🔥',
+				right: null
+			}
+		},
+	},
+	
+};
+
+/** Returns preset for streamer name; falls back to default. */
+function getPreset(streamerName) {
+  return PRESETS[streamerName] || PRESETS.default;
 }
 
-function setStreamerToURL(name) {
-  if (!name) history.replaceState(null, '', window.location.pathname);
-  else history.replaceState(null, '', `#${name}`);
-}
+function normalizeSong(item) {
+  const song = item && typeof item.song === 'object' ? item.song : null;
 
-function saveStreamer(name) {
-  if (name) localStorage.setItem('tclab_streamer', name);
-  else localStorage.removeItem('tclab_streamer');
-}
-
-function loadStreamer() {
-  return localStorage.getItem('tclab_streamer');
-}
-
-// ── Init ──────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded', () => {
-
-  // восстановление текста
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) {
-		getEditor().value = saved;
-		pushUndo(saved);    
-    setStatus('', 'восстановлено из localStorage', false);		
-  } else {
-	pushUndo('');
-	}
-
-  const sel = document.getElementById('streamer-select');
-  const inp = document.getElementById('streamer-input');
-
-  // ── генерируем список ──
-  sel.innerHTML = '';
-
-  Object.keys(KNOWN_IDS).forEach(name => {
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = name;
-    sel.appendChild(opt);
-  });
-
-  const optCustom = document.createElement('option');
-  optCustom.value = '__custom__';
-  optCustom.textContent = 'другой стример...';
-  sel.appendChild(optCustom);
-
-  // ── INIT streamer ──
-  const urlStreamer   = getStreamerFromURL();
-  const savedStreamer = loadStreamer();
-
-  if (urlStreamer) {
-    currentStreamer = urlStreamer;
-  } else if (savedStreamer && KNOWN_IDS[savedStreamer]) {
-    currentStreamer = savedStreamer;
-  } else {
-    currentStreamer = null;
+  if (song) {
+    return {
+      artist: (song.artist || '').trim(),
+      title:  (song.title  || '').trim(),
+      raw:    null,
+    };
   }
 
-  if (currentStreamer) {
-    sel.value = currentStreamer;
-  } else {
-    sel.value = '__custom__';
+  const nonlist =
+    (typeof item.nonlistSong === 'string' && item.nonlistSong) ||
+    (item.requests?.[0] && typeof item.requests[0].nonlistSong === 'string' && item.requests[0].nonlistSong);
+
+  if (nonlist) {
+    return { artist: '', title: '', raw: nonlist.trim() };
   }
 
-  // ── events ──
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter') loadSongs();
-  });
+  return { artist: '', title: '', raw: 'Неизвестная песня' };
+}
 
-  inp.addEventListener('blur', () => {
-    if (!inp.value.trim()) {
-      inp.classList.remove('visible');
-      sel.style.display = '';
+function applyTextRules(normalized, preset) {
+  const { artist, title, raw } = normalized;
 
-      if (currentStreamer) {
-        sel.value = currentStreamer;
-      } else {
-        sel.value = '__custom__';
+  if (raw !== null) return raw;
+
+  const rules = preset.text?.rules ?? [];
+
+  for (const rule of rules) {
+    const result = runTextRule(rule, artist, title);
+    if (result !== null) return result;
+  }
+
+  return 'Неизвестная песня';
+}
+
+function runTextRule(rule, artist, title) {
+  switch (rule.type) {
+
+    case 'fromPrefix': {
+      const prefix = (rule.prefix || '').toLowerCase();
+      if (artist.toLowerCase().startsWith(prefix)) {
+        return [title, artist ? `(${artist})` : ''].filter(Boolean).join(' ');
       }
+      return null;
+    }
+
+    case 'authorTag': {
+      if (artist.toLowerCase() === (rule.artist || '').toLowerCase()) {
+        return [artist, title].filter(Boolean).join(TEXT_SEP) + (rule.suffix || '');
+      }
+      return null;
+    }
+
+    case 'default': {
+      const parts = [artist, title].filter(Boolean);
+      return parts.length ? parts.join(TEXT_SEP) : null;
+    }
+
+    default:
+      return null;
+  }
+}
+
+function normalizeHeader(header) {
+  if (!header) return [];
+  return Array.isArray(header) ? header : [header];
+}
+
+function splitHeader(lines, preset) {
+  const header = normalizeHeader(preset.header);
+  if (!header.length) return { headerLines: [], bodyLines: lines };
+
+  const matches = header.every((h, i) => lines[i] === h);
+
+  if (matches) {
+    return {
+      headerLines: lines.slice(0, header.length),
+      bodyLines:   lines.slice(header.length),
+    };
+  }
+
+  return { headerLines: [], bodyLines: lines };
+}
+
+function joinWithHeader(headerLines, bodyLines) {
+  if (!headerLines.length) return bodyLines;
+  return [...headerLines, ...bodyLines];
+}
+
+function parseEditorLine(line, expectedSep = ' - ') {
+  const TC_RE = /(\d{1,2}:\d{2}(?::\d{2})?)/;
+  const m = line.match(TC_RE);
+  if (!m) return null;
+
+  const timeStr = m[1];
+  const timeIdx = line.indexOf(timeStr);
+
+  const prefix = line.slice(0, timeIdx);
+  const afterTime = line.slice(timeIdx + timeStr.length);
+
+  let sepIdx = afterTime.indexOf(expectedSep);
+  let sepLen = expectedSep.length;
+
+  if (sepIdx === -1) {
+    const dashMatch = afterTime.match(/\s[-–—]\s/);
+    if (dashMatch) {
+      sepIdx = dashMatch.index;
+      sepLen = dashMatch[0].length;
+    } else {
+      return {
+        prefix,
+        time: parseTC(timeStr),
+        timeStr,
+        suffix: '',
+        text: afterTime.trim(),
+        raw: line,
+      };
+    }
+  }
+
+  return {
+    prefix,
+    time: parseTC(timeStr),
+    timeStr,
+    suffix: afterTime.slice(0, sepIdx),
+    text: afterTime.slice(sepIdx + sepLen).trim(),
+    raw: line,
+  };
+}
+
+function serializeLine(ast, timeStr, sep) {
+  return `${ast.prefix}${timeStr}${ast.suffix}${sep}${ast.text}`;
+}
+
+
+function calcTimecodes() {
+  const ed  = getEditor();
+  const raw = ed.value;
+  if (!raw.trim()) { toast('редактор пуст', 'err'); return; }
+
+  const preset = getPreset(currentStreamer);
+  const lines  = raw.split('\n');
+	const { headerLines, bodyLines } = splitHeader(lines, preset);
+
+  const astList = bodyLines.map(line => parseEditorLine(line, preset.separator));
+
+  const validByIdx = new Map();
+  const validSeq   = [];
+  astList.forEach((ast, i) => {
+    if (ast) {
+      const entry = { ast, idx: i };
+      validByIdx.set(i, entry);
+      validSeq.push(entry);
     }
   });
 
-  const ed = getEditor();
-  ed.addEventListener('keydown', onEditorKeyDown);
-  ed.addEventListener('input',   onEditorInput);
+  if (!validSeq.length) { toast('нет строк в нужном формате', 'err'); return; }
 
-  updateUndoBtns();
-});
+  const emojiPattern = (preset.visual.mode === 'detect')
+    ? extractEmojiPatternFromAST(validSeq)
+    : null;
 
-function getEditor() { return document.getElementById('editor'); }
+  const anchorSeqIdx = validSeq.findIndex(e => e.ast.time !== 0);
+  const canRecalc = anchorSeqIdx !== -1 && playedAtArr.length === validSeq.length;
 
-// ── Editor input ──────────────────────────────────────────────
-let inputTimer = null;
+  if (anchorSeqIdx !== -1 && playedAtArr.length && !canRecalc) {
+    console.warn('[TCLab] playedAtArr.length !== validSeq.length; skipping time recalc');
+  }
 
-function onEditorInput() {
-  clearTimeout(inputTimer);
+  if (canRecalc) {
+    const anchorSec = validSeq[anchorSeqIdx].ast.time;
+    let t = anchorSec;
 
-  inputTimer = setTimeout(() => {
-    const val = getEditor().value;
-    pushUndo(val);
-    localStorage.setItem(STORAGE_KEY, val);
-  }, 600);
+    for (let i = anchorSeqIdx; i < validSeq.length; i++) {
+      if (i > anchorSeqIdx) {
+        const d = playedAtArr[i] - playedAtArr[i - 1];
+        if (!isFinite(d)) break;
+        t += Math.round(d / 1000);
+        if (t < 0) t = 0;
+      }
+      validSeq[i].ast.time = t;
+    }
+
+    t = anchorSec;
+    for (let i = anchorSeqIdx - 1; i >= 0; i--) {
+      const d = playedAtArr[i + 1] - playedAtArr[i];
+      if (!isFinite(d)) break;
+      t -= Math.round(d / 1000);
+      if (t < 0) t = 0;
+      validSeq[i].ast.time = t;
+    }
+  }
+
+  const rebuiltLines = bodyLines.map((line, i) => {
+    const entry = validByIdx.get(i);
+    if (!entry) return line;
+    entry.ast.timeStr = formatTC(entry.ast.time, preset.timeFormat);
+    return serializeLine(entry.ast, entry.ast.timeStr, preset.separator);
+  });
+
+  const finalLines = applyVisualPreset(rebuiltLines, validByIdx, preset, emojiPattern);
+	const resultLines = joinWithHeader(
+		headerLines.length ? headerLines : normalizeHeader(preset.header),
+		finalLines
+	);
+  const newText = resultLines.join('\n');
+  commitToEditor(ed, newText);
+
+  const hasAnchor = anchorSeqIdx !== -1;
+  const hasEmoji  = emojiPattern && (emojiPattern.left || emojiPattern.right);
+  const isFixed   = preset.visual.mode === 'fixed';
+
+  if (hasAnchor) {
+    toast((hasEmoji || isFixed) ? 'таймкоды пересчитаны + emoji' : 'таймкоды пересчитаны', 'ok');
+  } else if (hasEmoji || isFixed) {
+    toast('форматирование стиля', 'ok');
+  } else {
+    toast('введите начальный таймкод или добавьте emoji', 'err');
+  }
 }
 
-function onEditorKeyDown(e) {
-  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
-    e.preventDefault(); edUndo(); return;
-  }
-  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
-    e.preventDefault(); edRedo(); return;
+function applyVisualPreset(lines, validByIdx, preset, emojiPattern) {
+  const { visual, separator: sep, timeFormat } = preset;
+
+  switch (visual.mode) {
+    
+    case 'none':
+      return lines.map((line, i) => {
+        const entry = validByIdx.get(i);
+        if (!entry) return line;
+        const ast = entry.ast;       
+        return `${ast.timeStr}${sep}${ast.text}`;
+      });
+
+    case 'detect':
+      if (!emojiPattern || (!emojiPattern.left && !emojiPattern.right)) {        
+        return lines.map((line, i) => {
+          const entry = validByIdx.get(i);
+          if (!entry) return line;
+          const ast = entry.ast;
+          return `${ast.prefix}${ast.timeStr}${ast.suffix}${sep}${ast.text}`;
+        });
+      }
+      return applyEmojiPatternToLines(lines, validByIdx, emojiPattern, sep, timeFormat, preset);
+
+    case 'fixed':
+      return applyEmojiPatternToLines(
+        lines, validByIdx,
+        { left: visual.left || null, right: visual.right || null },
+        sep, timeFormat, preset
+      );
+
+    case 'complex': {
+      if (typeof visual.formatLine !== 'function') return lines;
+
+      let complexIdx = 0;
+      return lines.map((line, i) => {
+        const entry = validByIdx.get(i);
+        if (!entry) return line;
+
+        const ast = entry.ast;
+        const splitM = ast.text.match(/^(.+?)\s[-–—]\s(.+)$/);
+        const artist = splitM ? splitM[1] : '';
+        const title  = splitM ? splitM[2] : ast.text;
+
+        return visual.formatLine({
+          time:  ast.timeStr,
+          artist,
+          title,
+          raw:   ast.text,
+          index: complexIdx++,
+          sep,
+        });
+      });
+    }
+
+    default:
+      return lines;
   }
 }
 
-// ── Undo / Redo ───────────────────────────────────────────────
+function parseTC(s) {
+  if (!s) return 0;
+  const p = String(s).split(':').map(Number);
+  if (p.some(isNaN)) return 0;
+  if (p.length === 3) return p[0] * 3600 + p[1] * 60 + p[2];
+  if (p.length === 2) return p[0] * 60 + p[1];
+  return 0;
+}
+
+function formatTC(sec, fmt) {
+  const s = Math.max(0, Math.round(sec));
+  const h  = Math.floor(s / 3600);
+  const m  = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+
+  const template = fmt || '0:00:00';
+  const parts    = template.split(':');
+
+  if (parts.length === 2) {
+    return `${parts[0].length === 2 ? pad(m) : m}:${pad(ss)}`;
+  }
+  if (parts.length === 3) {
+    return `${parts[0].length === 2 ? pad(h) : h}:${pad(m)}:${pad(ss)}`;
+  }
+  return `${h}:${pad(m)}:${pad(ss)}`;
+}
+
+function pad(n) { return String(n).padStart(2, '0'); }
+
+let segmenter = null;
+try { segmenter = new Intl.Segmenter('ru', { granularity: 'grapheme' }); } catch {}
+
+function splitGraphemes(str) {
+  if (segmenter) return [...segmenter.segment(str)].map(s => s.segment);
+  return Array.from(str);
+}
+
+function isEmoji(char) {
+  return /\p{Extended_Pictographic}/u.test(char) && !/[0-9#*]/.test(char);
+}
+
+function extractEmojiPatternFromAST(validSeq) {
+  const left  = [];
+  const right = [];
+
+  for (const { ast } of validSeq) {
+    const le = splitGraphemes(ast.prefix).filter(isEmoji);
+    const re = splitGraphemes(ast.suffix).filter(isEmoji);
+    if (le.length) left.push(...le);
+    if (re.length) right.push(...re);
+  }
+
+  return {
+    left:  left.length  ? left  : null,
+    right: right.length ? right : null,
+  };
+}
+
+function applyEmojiPatternToLines(lines, validByIdx, pattern, sep, timeFormat, preset) {
+  let li = 0;
+  let ri = 0;
+
+  const authorCfg = preset.visual?.authorEmoji;
+
+  return lines.map((line, i) => {
+    const entry = validByIdx.get(i);
+    if (!entry) return line;
+
+    const ast = entry.ast;
+
+    const splitM = ast.text.match(/^(.+?)\s[-–—]\s(.+)$/);
+    const artist = splitM ? splitM[1].toLowerCase() : '';
+
+    let leftEmoji  = pattern.left  ? pattern.left[li++  % pattern.left.length]  : '';
+    let rightEmoji = pattern.right ? pattern.right[ri++ % pattern.right.length] : '';
+
+    if (authorCfg && artist === authorCfg.matchArtist.toLowerCase()) {
+      if (authorCfg.left !== undefined) {
+        leftEmoji = authorCfg.left || '';
+      }
+      if (authorCfg.right !== undefined && authorCfg.right !== null) {
+        rightEmoji = authorCfg.right;
+      }
+    }
+
+    return `${leftEmoji}${ast.timeStr}${rightEmoji}${sep}${ast.text}`;
+  });
+}
+
 function pushUndo(text) {
   if (undoStack.length && undoStack[undoStack.length - 1] === text) return;
   undoStack.push(text);
-  if (undoStack.length > 200) undoStack.shift();
+  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
   redoStack = [];
   updateUndoBtns();
 }
@@ -499,15 +797,18 @@ function edUndo() {
   const ed = getEditor();
   if (undoStack.length <= 1) return;
   redoStack.push(undoStack.pop());
-  ed.value = undoStack[undoStack.length - 1] ?? '';
+  const text = undoStack[undoStack.length - 1] ?? '';
+  ed.value = text;
+  localStorage.setItem(STORAGE_KEY, text);
   updateUndoBtns();
 }
 
 function edRedo() {
   if (!redoStack.length) return;
-  const next = redoStack.pop();
-  undoStack.push(next);
-  getEditor().value = next;
+  const text = redoStack.pop();
+  undoStack.push(text);
+  getEditor().value = text;
+  localStorage.setItem(STORAGE_KEY, text);
   updateUndoBtns();
 }
 
@@ -516,33 +817,127 @@ function updateUndoBtns() {
   document.getElementById('btn-redo').disabled = redoStack.length === 0;
 }
 
-// ── Select change ─────────────────────────────────────────────
+function commitToEditor(ed, text) {
+  if (ed.value === text) return;
+
+  const prev = ed.value;
+  ed.value = text;
+
+  pushUndo(prev);
+  pushUndo(text);
+
+  localStorage.setItem(STORAGE_KEY, text);
+  updateUndoBtns();
+}
+
+function getEditor() { return document.getElementById('editor'); }
+
+function onEditorInput() {
+  clearTimeout(inputTimer);
+  inputTimer = setTimeout(() => {
+    const val = getEditor().value;
+    pushUndo(val);
+    localStorage.setItem(STORAGE_KEY, val);
+  }, 600);
+}
+
+function onEditorKeyDown(e) {
+  const ctrl = e.ctrlKey || e.metaKey;
+  if (ctrl && !e.shiftKey && e.key === 'z') { e.preventDefault(); edUndo(); return; }
+  if (ctrl && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); edRedo(); return; }
+}
+
 function onSelectChange(sel) {
   const inp = document.getElementById('streamer-input');
-
   if (sel.value === '__custom__') {
     currentStreamer = null;
     setStreamerToURL(null);
     saveStreamer(null);
-
     sel.style.display = 'none';
     inp.classList.add('visible');
     inp.focus();
     return;
   }
-
   currentStreamer = sel.value;
   setStreamerToURL(currentStreamer);
   saveStreamer(currentStreamer);
 }
+
+function getStreamerFromURL() {
+  const hash = window.location.hash.replace('#', '').trim();
+  return (hash && KNOWN_IDS[hash]) ? hash : null;
+}
+function setStreamerToURL(name) {
+  history.replaceState(null, '', name ? `#${name}` : window.location.pathname);
+}
+function saveStreamer(name) {
+  if (name) localStorage.setItem(STORAGE_STREAMER, name);
+  else localStorage.removeItem(STORAGE_STREAMER);
+}
+function loadStreamer() { return localStorage.getItem(STORAGE_STREAMER); }
+
+window.addEventListener('DOMContentLoaded', () => {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    getEditor().value = saved;
+    pushUndo(saved);
+    setStatus('', 'восстановлено из localStorage', false);
+  } else {
+    pushUndo('');
+  }
+
+  const sel = document.getElementById('streamer-select');
+  const inp = document.getElementById('streamer-input');
+  sel.innerHTML = '';
+  for (const name of Object.keys(KNOWN_IDS)) {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  }
+  const optCustom = document.createElement('option');
+  optCustom.value = '__custom__'; optCustom.textContent = 'другой стример...';
+  sel.appendChild(optCustom);
+
+  const urlStreamer   = getStreamerFromURL();
+  const savedStreamer = loadStreamer();
+  currentStreamer = (urlStreamer) ||
+                   (savedStreamer && KNOWN_IDS[savedStreamer] ? savedStreamer : null);
+  sel.value = currentStreamer || '__custom__';
+
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') loadSongs(); });
+  inp.addEventListener('blur', () => {
+    if (!inp.value.trim()) {
+      inp.classList.remove('visible');
+      sel.style.display = '';
+      sel.value = currentStreamer || '__custom__';
+    }
+  });
+
+  const ed = getEditor();
+  ed.addEventListener('keydown', onEditorKeyDown);
+  ed.addEventListener('input',   onEditorInput);
+  updateUndoBtns();
+	
+	document.getElementById('btn-load').addEventListener('click', loadSongs);
+	document.getElementById('btn-undo').addEventListener('click', edUndo);
+	document.getElementById('btn-redo').addEventListener('click', edRedo);
+	document.getElementById('btn-timecodes').addEventListener('click', calcTimecodes);
+	document.getElementById('btn-copy').addEventListener('click', copyText);
+	document.getElementById('btn-clear').addEventListener('click', clearEditor);
+
+	document.getElementById('confirm-overlay').addEventListener('click', confirmBgClick);
+	document.getElementById('confirm-cancel').addEventListener('click', confirmCancel);
+	document.getElementById('confirm-ok-btn').addEventListener('click', confirmOk);
+});
 
 async function resolveStreamerId(nameOrId) {
   if (/^\d+$/.test(nameOrId)) return parseInt(nameOrId, 10);
   if (KNOWN_IDS[nameOrId] !== undefined) return KNOWN_IDS[nameOrId];
   const r = await fetchWithFallback(`/streamers/${encodeURIComponent(nameOrId)}`);
   if (!r.ok) {
-    if (r.status === 404) throw new Error(`стример «${nameOrId}» не найден`);
-    throw new Error(`ошибка API: ${r.status}`);
+    throw new Error(r.status === 404
+      ? `стример «${nameOrId}» не найден`
+      : `ошибка API: ${r.status}`);
   }
   const d = await r.json();
   if (!d.id) throw new Error('не удалось получить ID стримера');
@@ -550,12 +945,17 @@ async function resolveStreamerId(nameOrId) {
 }
 
 async function loadSongs() {
-	if (document.getElementById('btn-load').disabled) return;
-  const sel = document.getElementById('streamer-select');
-  const inp = document.getElementById('streamer-input');
+  if (document.getElementById('btn-load').disabled) return;
+
+  const sel      = document.getElementById('streamer-select');
+  const inp      = document.getElementById('streamer-input');
   const isCustom = inp.classList.contains('visible');
   const nameOrId = isCustom ? inp.value.trim() : sel.value;
-  if (!nameOrId || nameOrId === '__custom__') { toast('введите имя стримера', 'err'); return; }
+
+  if (!nameOrId || nameOrId === '__custom__') {
+    toast('введите имя стримера', 'err');
+    return;
+  }
 
   setStatus('loading', 'получаем данные…', false);
   setBtnLoading(true);
@@ -564,6 +964,7 @@ async function loadSongs() {
     const sid = await resolveStreamerId(nameOrId);
     const hr  = await fetchWithFallback(`/streamers/${sid}/playHistory?size=100&current=0`);
     if (!hr.ok) throw new Error(`ошибка истории: ${hr.status}`);
+
     const hd    = await hr.json();
     const items = hd.items || hd.data || hd;
     if (!Array.isArray(items) || !items.length) throw new Error('история воспроизведения пуста');
@@ -572,16 +973,24 @@ async function loadSongs() {
     if (!ls.length) throw new Error('не удалось определить последний стрим');
     ls.reverse();
 
+    const streamerName = isCustom ? nameOrId : (currentStreamer || nameOrId);
+    const preset = getPreset(streamerName);
+
     playedAtArr = ls.map(x => new Date(x.playedAt).getTime());
-		const text  = ls.map(x => `0:00:00${SEP}${normalizeSong(x)}`).join('\n');
 
-    const ed = getEditor();
-    pushUndo(ed.value); // save previous state before overwrite
-    ed.value = text;
-    pushUndo(text);
+		const body = ls.map(x => {
+			const normalized = normalizeSong(x);
+			const songText   = applyTextRules(normalized, preset);
+			return `${formatTC(0, preset.timeFormat)}${preset.separator}${songText}`;
+		});
+		
+		const header = normalizeHeader(preset.header);
+		const text = [...header, ...body].join('\n');
 
+    commitToEditor(getEditor(), text);
     setStatus('ok', `${nameOrId} — последний стрим`, true, ls.length);
     toast(`загружено ${ls.length} песен`, 'ok');
+
   } catch (err) {
     setStatus('error', err.message || 'неизвестная ошибка', false);
     toast(err.message || 'ошибка загрузки', 'err');
@@ -592,349 +1001,76 @@ async function loadSongs() {
 
 async function fetchWithFallback(path, proxyDelay = 1000) {
   const startTime = Date.now();
+  const directCtrl = new AbortController();
+  const proxyCtrl  = new AbortController();
 
-  const directController = new AbortController();
-  const proxyController  = new AbortController();
+  const toProxyUrl = p => `${API_PROXY}?endpoint=${encodeURIComponent('/v1' + p)}`;
 
-  const toProxyUrl = (path) =>
-    `${API_PROXY}?endpoint=${encodeURIComponent('/v1' + path)}`;
-
-  const requestTask = async (url, label, controller, delay = 0) => {
-    if (delay) {
-      await new Promise(r => setTimeout(r, delay));
-    }
-
-    const response = await fetch(url, { signal: controller.signal });
-
-    if (!response.ok) {
-      throw new Error(`${label} failed (${response.status})`);
-    }
-
-    const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-    console.log(`[TCLab] ${label} success in ${duration}s`);
-
+  const makeTask = async (url, label, ctrl, delay = 0) => {
+    if (delay) await new Promise(r => setTimeout(r, delay));
+    const response = await fetch(url, { signal: ctrl.signal });
+    if (!response.ok) throw new Error(`${label} failed (${response.status})`);
+    console.log(`[TCLab] ${label} OK in ${((Date.now() - startTime) / 1000).toFixed(2)}s`);
     return { response, label };
   };
 
-  const directTask = requestTask(
-    API_BASE + path,
-    'Direct API',
-    directController
-  );
-
-  const proxyTask = requestTask(
-    toProxyUrl(path),
-    'Proxy API',
-    proxyController,
-    proxyDelay
-  );
+  const directTask = makeTask(API_BASE + path, 'Direct API', directCtrl);
+  const proxyTask  = makeTask(toProxyUrl(path), 'Proxy API',  proxyCtrl, proxyDelay);
 
   try {
     const winner = await Promise.any([directTask, proxyTask]);
-
-    if (winner.label === 'Direct API') {
-      proxyController.abort();
-    } else {
-      directController.abort();
-    }
-
+    (winner.label === 'Direct API' ? proxyCtrl : directCtrl).abort();
     return winner.response;
-
   } catch (err) {
-    if (err instanceof AggregateError) {
-      console.error('[TCLab] All requests failed:', err.errors);
-    } else {
-      console.error('[TCLab] Request failed:', err);
-    }
-
+    if (err instanceof AggregateError) console.error('[TCLab] All requests failed:', err.errors);
+    else console.error('[TCLab] Request failed:', err);
     throw new Error('Не удалось получить данные (API и прокси недоступны)');
   }
 }
 
 function extractLastStream(items) {
   const clean = items
-    .filter(x => x && x.playedAt)
-    .map(x => ({
-      ...x,
-      ts: new Date(x.playedAt).getTime()
-    }))
+    .filter(x => x?.playedAt)
+    .map(x => ({ ...x, ts: new Date(x.playedAt).getTime() }))
     .filter(x => !isNaN(x.ts));
 
   if (!clean.length) return [];
-
   clean.sort((a, b) => b.ts - a.ts);
 
   const result = [clean[0]];
-
   for (let i = 1; i < clean.length; i++) {
-    const prev = clean[i - 1].ts;
-    const curr = clean[i].ts;
-
-    if (prev - curr > GAP_THRESHOLD) break;
-
+    if (clean[i - 1].ts - clean[i].ts > GAP_THRESHOLD) break;
     result.push(clean[i]);
   }
-
   return result;
 }
 
-function normalizeSong(item) {
-  const song = item && typeof item.song === 'object' ? item.song : null;
-
-  if (song) {
-    const artist = (song.artist || '').trim();
-    const title  = (song.title  || '').trim();
-    const artistLower = artist.toLowerCase();
-
-    if (artistLower.startsWith('из')) {
-      return `${title} (${artist})`.trim();
-    }
-
-    if (artistLower === 'gellert lera') {
-      return `${artist} - ${title} (авторская)`.trim();
-    }
-
-    return `${artist} - ${title}`.trim();
-  }
-
-  // Обработка песен, введенных стримером вручную (nonlist)
-  if (typeof item.nonlistSong === 'string') {
-    return item.nonlistSong.trim();
-  }
-
-  const r0 = item.requests && item.requests[0];
-  if (r0 && typeof r0.nonlistSong === 'string') {
-    return r0.nonlistSong.trim();
-  }
-
-  return 'Неизвестная песня';
-}
-
-let segmenter = null;
-try {
-  segmenter = new Intl.Segmenter('ru', { granularity: 'grapheme' });
-} catch {}
-
-function splitGraphemes(str) {
-  if (segmenter) {
-    return [...segmenter.segment(str)].map(s => s.segment);
-  }
-  return Array.from(str); // fallback
-}
-
-function isEmoji(char) {
-  return /\p{Extended_Pictographic}/u.test(char) && !/[0-9#*]/.test(char);
-}
-
-function extractEmojiPattern(lines) {
-  const left = [];
-  const right = [];
-
-  const TC_RE = /(\d{1,2}:\d{2}:\d{2})/;
-
-  for (const line of lines) {
-    if (!line.includes(SEP)) continue;
-
-    const [before] = line.split(SEP);
-    const m = before.match(TC_RE);
-    if (!m) continue;
-
-    const timeIdx = before.indexOf(m[1]);
-
-    const leftPart  = before.slice(0, timeIdx);
-    const rightPart = before.slice(timeIdx + m[1].length);
-
-		const leftEmoji  = splitGraphemes(leftPart).filter(isEmoji);
-		const rightEmoji = splitGraphemes(rightPart).filter(isEmoji);
-
-    if (leftEmoji.length)  left.push(...leftEmoji);
-    if (rightEmoji.length) right.push(...rightEmoji);
-  }
-
-  return {
-    left:  left.length  ? left  : null,
-    right: right.length ? right : null
-  };
-}
-
-function applyEmojiPattern(lines, pattern) {
-  if (!pattern.left && !pattern.right) return lines;
-
-  const TC_RE = /(\d{1,2}:\d{2}:\d{2})/;
-
-  let li = 0;
-  let ri = 0;
-
-  return lines.map(line => {
-    if (!line.includes(SEP)) return line;
-
-    const [before, after] = line.split(SEP);
-    const m = before.match(TC_RE);
-    if (!m) return line;
-
-    const time = m[1];
-
-    const leftEmoji  = pattern.left  ? pattern.left[li++ % pattern.left.length]   : '';
-    const rightEmoji = pattern.right ? pattern.right[ri++ % pattern.right.length] : '';
-
-    return `${leftEmoji}${time}${rightEmoji}${SEP}${after}`;
-  });
-}
-
-function calcTimecodes() {
-  const ed  = getEditor();
-  const raw = ed.value;
-
-  if (!raw.trim()) {
-    toast('редактор пуст', 'err');
-    return;
-  }
-
-  const lines = raw.split('\n');
-  const pattern = extractEmojiPattern(lines);
-  const TC_RE = /^[^\d]*?(\d{1,2}:\d{2}:\d{2})[^\d]*?[–—-]\s*(.+)$/;
-	const parsed = lines.map(line => {
-		const m = line.match(TC_RE);
-		if (!m) return null;
-
-		const timeStr = m[1];
-		const text    = m[2].trim();
-
-		const timePos = line.indexOf(timeStr);
-
-		return {
-			prefix: line.slice(0, timePos),
-			time: parseTC(timeStr),
-			text
-		};
-	});
-
-	const valid = parsed
-		.map((p, i) => p ? { ...p, idx: i } : null)
-		.filter(Boolean);
-
-	if (!valid.length) {
-		toast('нет строк в нужном формате', 'err');
-		return;
-	}
-
-	let anchorIdx = -1;
-	for (let i = 0; i < valid.length; i++) {
-		if (valid[i].time !== 0) {
-			anchorIdx = i;
-			break;
-		}
-	}
-
-	if (anchorIdx !== -1 && playedAtArr.length) {
-		const anchor = valid[anchorIdx];
-		let t = anchor.time;
-
-		// forward
-		for (let i = anchorIdx; i < valid.length; i++) {
-			if (i > anchorIdx) {
-				const d = playedAtArr[i] - playedAtArr[i - 1];
-				if (!isFinite(d)) break;
-				t += Math.round(d / 1000);
-			}
-			valid[i].time = t;
-		}
-
-		// backward
-		t = anchor.time;
-		for (let i = anchorIdx - 1; i >= 0; i--) {
-			const d = playedAtArr[i + 1] - playedAtArr[i];
-			if (!isFinite(d)) break;
-			t -= Math.round(d / 1000);
-			if (t < 0) t = 0;
-			valid[i].time = t;
-		}
-	}
-
-	let newLines = lines.map((line, i) => {
-		const p = valid.find(v => v.idx === i);
-		if (!p) return line;
-		return `${p.prefix}${formatTC(p.time)}${SEP}${p.text}`;
-	});
-
-  newLines = applyEmojiPattern(newLines, pattern);
-
-  const newText = newLines.join('\n');
-
-  pushUndo(ed.value);
-  ed.value = newText;
-  pushUndo(newText);
-
-	const hasEmoji = pattern.left || pattern.right;
-
-	if (anchorIdx !== -1) {
-		toast(
-			hasEmoji
-				? 'таймкоды пересчитаны + emoji'
-				: 'таймкоды пересчитаны',
-			'ok'
-		);
-	} else if (hasEmoji) {
-		toast('форматирование стиля', 'ok');
-	} else {
-		toast('введите начальный таймкод или добавьте emoji', 'err');
-	}
-}
-
-// ── Copy ──────────────────────────────────────────────────────
 async function copyText() {
   const text = getEditor().value;
   if (!text.trim()) { toast('нечего копировать', 'err'); return; }
   try {
     await navigator.clipboard.writeText(text);
-    toast('скопировано', 'ok');
   } catch {
-    // fallback
-    const ed = getEditor();
-    ed.select();
-    document.execCommand('copy');
-    toast('скопировано', 'ok');
+    const ed = getEditor(); ed.select(); document.execCommand('copy');
   }
+  toast('скопировано', 'ok');
 }
 
-// ── Clear ─────────────────────────────────────────────────────
 function clearEditor() {
   showConfirm('Очистить редактор?', 'Текст и таймкоды будут удалены', 'очистить', () => {
     const ed = getEditor();
-    pushUndo(ed.value);
-    ed.value = '';
+    commitToEditor(ed, '');
     playedAtArr = [];
     setStatus('', 'редактор очищен', false);
-    toast('очищено', '');
-    updateUndoBtns();
+    toast('очищено', '');    
   });
 }
 
-// ── TC helpers ────────────────────────────────────────────────
-function parseTC(s) {
-  const p = s.split(':').map(Number);
-  return p.length === 3 ? p[0]*3600 + p[1]*60 + p[2] : p.length === 2 ? p[0]*60 + p[1] : 0;
-}
-
-function formatTC(sec) {
-  const s = Math.max(0, Math.round(sec));
-
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const ss = s % 60;
-
-  return `${h}:${pad(m)}:${pad(ss)}`;
-}
-
-function pad(n) { return String(n).padStart(2, '0'); }
-
-// ── UI helpers ────────────────────────────────────────────────
 function setStatus(type, msg, showCount, count) {
-  const dot = document.getElementById('status-dot');
-  const txt = document.getElementById('status-text');
+  const classes = { ok: 'ok', error: 'error', loading: 'loading' };
+  document.getElementById('status-dot').className = `status-dot${type && classes[type] ? ' ' + classes[type] : ''}`;
+  document.getElementById('status-text').textContent = msg;
   const cnt = document.getElementById('song-count');
-  dot.className = 'status-dot' + (type === 'ok' ? ' ok' : type === 'error' ? ' error' : type === 'loading' ? ' loading' : '');
-  txt.textContent = msg;
   cnt.style.display = (showCount && count) ? '' : 'none';
   if (showCount && count) cnt.textContent = `${count} песен`;
 }
@@ -942,23 +1078,22 @@ function setStatus(type, msg, showCount, count) {
 function setBtnLoading(loading) {
   const btn = document.getElementById('btn-load');
   const lbl = document.getElementById('load-label');
-  btn.disabled = loading;
-	lbl.textContent = '';
-	if (loading) {
-		const sp = document.createElement('span');
-		sp.className = 'spinner';
-		lbl.appendChild(sp);
-	} else {
-		lbl.textContent = 'загрузить';
-	}
+  btn.disabled  = loading;
+  lbl.textContent = '';
+  if (loading) {
+    const sp = document.createElement('span');
+    sp.className = 'spinner';
+    lbl.appendChild(sp);
+  } else {
+    lbl.textContent = 'загрузить';
+  }
 }
 
 function toast(msg, type) {
-  const c  = document.getElementById('toast-container');
   const el = document.createElement('div');
-  el.className = 'toast' + (type ? ' ' + type : '');
+  el.className = `toast${type ? ' ' + type : ''}`;
   el.textContent = msg;
-  c.appendChild(el);
+  document.getElementById('toast-container').appendChild(el);
   setTimeout(() => el.remove(), 2500);
 }
 
@@ -969,9 +1104,17 @@ function showConfirm(title, sub, okLabel, cb) {
   confirmCb = cb;
   document.getElementById('confirm-overlay').style.display = 'flex';
 }
-function confirmOk()    { document.getElementById('confirm-overlay').style.display = 'none'; if (confirmCb) { confirmCb(); confirmCb = null; } }
-function confirmCancel(){ document.getElementById('confirm-overlay').style.display = 'none'; confirmCb = null; }
-function confirmBgClick(e){ if (e.target === document.getElementById('confirm-overlay')) confirmCancel(); }
+function confirmOk() {
+  document.getElementById('confirm-overlay').style.display = 'none';
+  if (confirmCb) { confirmCb(); confirmCb = null; }
+}
+function confirmCancel() {
+  document.getElementById('confirm-overlay').style.display = 'none';
+  confirmCb = null;
+}
+function confirmBgClick(e) {
+  if (e.target === document.getElementById('confirm-overlay')) confirmCancel();
+}
 </script>
 </body>
 </html>
