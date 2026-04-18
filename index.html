@@ -323,7 +323,7 @@ main {
       <span class="editor-filename">timecodes.txt</span>
     </div>
     <textarea id="editor"
-      placeholder="загрузите стример чтобы начать…"
+      placeholder="Нажмите Загрузить, чтобы начать…"
       spellcheck="false"
       autocorrect="off"
       autocapitalize="off"
@@ -367,7 +367,6 @@ let redoStack						= [];
 let confirmCb						= null;
 let currentStreamer			= null;
 let inputTimer					= null;
-let streamerMode				= 'select'; // 'select' | 'input'
 
 const PRESETS = {
 
@@ -389,7 +388,7 @@ const PRESETS = {
         { type: 'default' },
       ],
     },
-    visual: { mode: 'detect' },
+    visual: { mode: 'detect', order: 'artist-title' },
   },
 
 	vanilla__bun: {
@@ -399,6 +398,7 @@ const PRESETS = {
 		text:   { rules: [{ type: 'default' }] },
 		visual: {
 			mode: 'detect',
+			order: 'artist-title',
 			authorEmoji: {
 				matchArtist: 'vanilla bun',
 				left: '❤️‍🔥',
@@ -413,33 +413,13 @@ const PRESETS = {
 			text: { rules: [{ type: 'default' }] },
 			visual: {
 				mode: 'none',
+				order: 'title-artist',
 				extraSpacing: true,
 				liveLearning: true
 			},
 		},
 	
 };
-
-function updateToggleIcon() {
-  const toggle = document.getElementById('picker-toggle');
-  toggle.textContent = (streamerMode === 'input') ? '✕' : '▼';
-}
-
-function setMode(mode) {
-  const wrap  = document.getElementById('streamer-picker');
-  const input = document.getElementById('streamer-input');
-
-  streamerMode = mode;
-
-  if (mode === 'input') {
-    wrap.classList.add('input-mode');
-    input.focus();
-  } else {
-    wrap.classList.remove('input-mode');
-  }
-
-  updateToggleIcon();
-}
 
 function getPreset(streamerName) {
   return PRESETS[streamerName] || PRESETS.default;
@@ -475,14 +455,23 @@ function applyTextRules(normalized, preset) {
   const rules = preset.text?.rules ?? [];
 
   for (const rule of rules) {
-    const result = runTextRule(rule, artist, title);
+    const result = runTextRule(rule, artist, title, preset);
     if (result !== null) return result;
   }
 
   return 'Неизвестная песня';
 }
 
-function runTextRule(rule, artist, title) {
+function formatByOrder(artist, title, order) {
+  const parts =
+    order === 'title-artist'
+      ? [title, artist]
+      : [artist, title];
+
+  return parts.filter(Boolean).join(TEXT_SEP);
+}
+
+function runTextRule(rule, artist, title, preset) {
   switch (rule.type) {
 
     case 'fromPrefix': {
@@ -493,17 +482,18 @@ function runTextRule(rule, artist, title) {
       return null;
     }
 
-    case 'authorTag': {
-      if (artist.toLowerCase() === (rule.artist || '').toLowerCase()) {
-        return [artist, title].filter(Boolean).join(TEXT_SEP) + (rule.suffix || '');
-      }
-      return null;
-    }
+		case 'authorTag': {
+			if (artist.toLowerCase() === (rule.artist || '').toLowerCase()) {
+				const order = preset.visual?.order || 'artist-title';
+				return formatByOrder(artist, title, order) + (rule.suffix || '');
+			}
+			return null;
+		}
 
-    case 'default': {
-      const parts = [artist, title].filter(Boolean);
-      return parts.length ? parts.join(TEXT_SEP) : null;
-    }
+		case 'default': {
+			const order = preset.visual?.order || 'artist-title';
+			return formatByOrder(artist, title, order) || null;
+		}
 
     default:
       return null;
