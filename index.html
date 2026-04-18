@@ -357,7 +357,7 @@ const GAP_THRESHOLD			= 6 * 60 * 60 * 1000;
 const UNDO_LIMIT				= 200;
 const STORAGE_KEY				= 'tclab_v1';
 const STORAGE_STREAMER	= 'tclab_streamer';
-const KNOWN_IDS					= { 'vanilla__bun': 39650, 'gellert_lera': 28268 };
+const KNOWN_IDS					= { 'vanilla__bun': 39650, 'gellert_lera': 28268, 'maniavolk': 39141 };
 const TIME_SEP					= ' \u2013 ';
 const TEXT_SEP					= ' - ';
 
@@ -367,6 +367,7 @@ let redoStack						= [];
 let confirmCb						= null;
 let currentStreamer			= null;
 let inputTimer					= null;
+let streamerMode				= 'select'; // 'select' | 'input'
 
 const PRESETS = {
 
@@ -406,9 +407,40 @@ const PRESETS = {
 		},
 	},
 	
+	maniavolk: {
+			timeFormat: '0:00:00',
+			separator: '  ',
+			text: { rules: [{ type: 'default' }] },
+			visual: {
+				mode: 'none',
+				extraSpacing: true,
+				liveLearning: true
+			},
+		},
+	
 };
 
-/** Returns preset for streamer name; falls back to default. */
+function updateToggleIcon() {
+  const toggle = document.getElementById('picker-toggle');
+  toggle.textContent = (streamerMode === 'input') ? '✕' : '▼';
+}
+
+function setMode(mode) {
+  const wrap  = document.getElementById('streamer-picker');
+  const input = document.getElementById('streamer-input');
+
+  streamerMode = mode;
+
+  if (mode === 'input') {
+    wrap.classList.add('input-mode');
+    input.focus();
+  } else {
+    wrap.classList.remove('input-mode');
+  }
+
+  updateToggleIcon();
+}
+
 function getPreset(streamerName) {
   return PRESETS[streamerName] || PRESETS.default;
 }
@@ -638,62 +670,43 @@ function calcTimecodes() {
 
 function applyVisualPreset(lines, validByIdx, preset, emojiPattern) {
   const { visual, separator: sep, timeFormat } = preset;
+  let visualIdx = 0;
 
-  switch (visual.mode) {
-    
-    case 'none':
-      return lines.map((line, i) => {
-        const entry = validByIdx.get(i);
-        if (!entry) return line;
-        const ast = entry.ast;       
-        return `${ast.timeStr}${sep}${ast.text}`;
-      });
+  return lines.map((line, i) => {
+    const entry = validByIdx.get(i);
+    if (!entry) return line;
 
-    case 'detect':
-      if (!emojiPattern || (!emojiPattern.left && !emojiPattern.right)) {        
-        return lines.map((line, i) => {
-          const entry = validByIdx.get(i);
-          if (!entry) return line;
-          const ast = entry.ast;
-          return `${ast.prefix}${ast.timeStr}${ast.suffix}${sep}${ast.text}`;
-        });
-      }
-      return applyEmojiPatternToLines(lines, validByIdx, emojiPattern, sep, timeFormat, preset);
+    const ast = entry.ast;
+    let songText = ast.text;
+    let headerText = "";
 
-    case 'fixed':
-      return applyEmojiPatternToLines(
-        lines, validByIdx,
-        { left: visual.left || null, right: visual.right || null },
-        sep, timeFormat, preset
-      );
-
-    case 'complex': {
-      if (typeof visual.formatLine !== 'function') return lines;
-
-      let complexIdx = 0;
-      return lines.map((line, i) => {
-        const entry = validByIdx.get(i);
-        if (!entry) return line;
-
-        const ast = entry.ast;
-        const splitM = ast.text.match(/^(.+?)\s[-–—]\s(.+)$/);
-        const artist = splitM ? splitM[1] : '';
-        const title  = splitM ? splitM[2] : ast.text;
-
-        return visual.formatLine({
-          time:  ast.timeStr,
-          artist,
-          title,
-          raw:   ast.text,
-          index: complexIdx++,
-          sep,
-        });
-      });
+    if (visual.liveLearning && songText.toUpperCase().includes('[LIVE LEARNING]')) {
+      songText = songText.replace(/\[LIVE LEARNING\]/gi, '').trim();
+      headerText = "⚡️⚡️⚡️ Live Learning ⚡️⚡️⚡️\n";
     }
 
-    default:
-      return lines;
-  }
+    let formattedLine = "";
+    if (visual.mode === 'none') {
+      formattedLine = `${ast.timeStr}${sep}${songText}`;
+    } else if (visual.mode === 'detect') {
+      const pattern = emojiPattern || { left: null, right: null };
+      const le = pattern.left ? pattern.left[visualIdx % pattern.left.length] : '';
+      const ri = pattern.right ? pattern.right[visualIdx % pattern.right.length] : '';
+      formattedLine = `${le}${ast.timeStr}${ri}${sep}${songText}`;
+    } else if (visual.mode === 'fixed') {
+      const le = visual.left ? visual.left[visualIdx % visual.left.length] : '';
+      const ri = visual.right ? visual.right[visualIdx % visual.right.length] : '';
+      formattedLine = `${le}${ast.timeStr}${ri}${sep}${songText}`;
+    }
+
+    let finalResult = headerText + formattedLine;
+    if (visual.extraSpacing && visualIdx > 0) {
+      finalResult = "\n" + finalResult;
+    }
+
+    visualIdx++;
+    return finalResult;
+  });
 }
 
 function parseTC(s) {
