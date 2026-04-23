@@ -678,11 +678,39 @@ function applyVisualPreset(lines, validByIdx, preset, emojiPattern) {
     let formattedLine = "";
     if (visual.mode === 'none') {
       formattedLine = `${ast.timeStr}${sep}${songText}`;
-    } else if (visual.mode === 'detect') {
-      const pattern = emojiPattern || { left: null, right: null };
-      const le = pattern.left ? pattern.left[visualIdx % pattern.left.length] : '';
-      const ri = pattern.right ? pattern.right[visualIdx % pattern.right.length] : '';
-      formattedLine = `${le}${ast.timeStr}${ri}${sep}${songText}`;
+
+		} else if (visual.mode === 'detect') {
+			const pattern = emojiPattern || { left: null, right: null };
+
+			let leftEmoji  = pattern.left  ? pattern.left[visualIdx % pattern.left.length]  : '';
+			let rightEmoji = pattern.right ? pattern.right[visualIdx % pattern.right.length] : '';
+
+			const authorCfg = visual.authorEmoji;
+
+			if (authorCfg) {
+				const parts = ast.text.split(/\s[-–—]\s/);
+
+				let artist = '';
+
+				if (parts.length === 2) {
+					if (preset.visual?.order === 'title-artist') {
+						artist = parts[1].toLowerCase();
+					} else {
+						artist = parts[0].toLowerCase();
+					}
+				}
+
+				if (artist === authorCfg.matchArtist.toLowerCase()) {
+					if (authorCfg.left !== undefined) {
+						leftEmoji = authorCfg.left || '';
+					}
+					if (authorCfg.right !== undefined && authorCfg.right !== null) {
+						rightEmoji = authorCfg.right;
+					}
+				}
+			}
+
+			formattedLine = `${leftEmoji}${ast.timeStr}${rightEmoji}${sep}${songText}`;
     } else if (visual.mode === 'fixed') {
       const le = visual.left ? visual.left[visualIdx % visual.left.length] : '';
       const ri = visual.right ? visual.right[visualIdx % visual.right.length] : '';
@@ -755,37 +783,6 @@ function extractEmojiPatternFromAST(validSeq) {
     left:  left.length  ? left  : null,
     right: right.length ? right : null,
   };
-}
-
-function applyEmojiPatternToLines(lines, validByIdx, pattern, sep, timeFormat, preset) {
-  let li = 0;
-  let ri = 0;
-
-  const authorCfg = preset.visual?.authorEmoji;
-
-  return lines.map((line, i) => {
-    const entry = validByIdx.get(i);
-    if (!entry) return line;
-
-    const ast = entry.ast;
-
-    const splitM = ast.text.match(/^(.+?)\s[-–—]\s(.+)$/);
-    const artist = splitM ? splitM[1].toLowerCase() : '';
-
-    let leftEmoji  = pattern.left  ? pattern.left[li++  % pattern.left.length]  : '';
-    let rightEmoji = pattern.right ? pattern.right[ri++ % pattern.right.length] : '';
-
-    if (authorCfg && artist === authorCfg.matchArtist.toLowerCase()) {
-      if (authorCfg.left !== undefined) {
-        leftEmoji = authorCfg.left || '';
-      }
-      if (authorCfg.right !== undefined && authorCfg.right !== null) {
-        rightEmoji = authorCfg.right;
-      }
-    }
-
-    return `${leftEmoji}${ast.timeStr}${rightEmoji}${sep}${ast.text}`;
-  });
 }
 
 function pushUndo(text) {
