@@ -201,7 +201,6 @@ main {
   resize: none;
   color: var(--text);
   font-family: var(--mono);
-  font-size: 14px;
   line-height: 1.85;
   padding: 12px 14px;
   caret-color: var(--accent);
@@ -395,14 +394,21 @@ const PRESETS = {
 		timeFormat: '00:00:00',
 		separator:  TIME_SEP,
 		header: ['ТАЙМ-КОДЫ🌸', ''],
+		footer: [
+			'',
+			'Друзья, приглашаем вас на наши уютные стримы в отличной компании!',
+			'В четверг и в воскресенье в 19:00 (мск)',
+			'',
+			'Всем добра ✨'
+		],
 		text:   { rules: [{ type: 'default' }] },
 		visual: {
 			mode: 'detect',
 			order: 'artist-title',
 			authorEmoji: {
 				matchArtist: 'vanilla bun',
-				left: '❤️‍🔥',
-				right: null
+				left: '❤‍🔥',
+				right: '❤‍🔥'
 			}
 		},
 	},
@@ -500,30 +506,34 @@ function runTextRule(rule, artist, title, preset) {
   }
 }
 
-function normalizeHeader(header) {
-  if (!header) return [];
-  return Array.isArray(header) ? header : [header];
+function normalizeBlock(block) {
+  if (!block) return [];
+  return Array.isArray(block) ? block : [block];
 }
 
-function splitHeader(lines, preset) {
-  const header = normalizeHeader(preset.header);
-  if (!header.length) return { headerLines: [], bodyLines: lines };
+function splitBlock(lines, block, fromEnd = false) {
+  const normalized = normalizeBlock(block);
+  if (!normalized.length) return { main: lines, block: [] };
 
-  const matches = header.every((h, i) => lines[i] === h);
-
-  if (matches) {
-    return {
-      headerLines: lines.slice(0, header.length),
-      bodyLines:   lines.slice(header.length),
-    };
+  if (!fromEnd) {
+    const matches = normalized.every((v, i) => lines[i] === v);
+    return matches
+      ? { block: lines.slice(0, normalized.length), main: lines.slice(normalized.length) }
+      : { block: [], main: lines };
   }
 
-  return { headerLines: [], bodyLines: lines };
+  const startIdx = lines.length - normalized.length;
+  if (startIdx < 0) return { main: lines, block: [] };
+
+  const matches = normalized.every((v, i) => lines[startIdx + i] === v);
+  return matches
+    ? { main: lines.slice(0, startIdx), block: lines.slice(startIdx) }
+    : { main: lines, block: [] };
 }
 
-function joinWithHeader(headerLines, bodyLines) {
-  if (!headerLines.length) return bodyLines;
-  return [...headerLines, ...bodyLines];
+function joinBlock(main, block, fromEnd = false) {
+  if (!block.length) return main;
+  return fromEnd ? [...main, ...block] : [...block, ...main];
 }
 
 function parseEditorLine(line, expectedSep = ' - ') {
@@ -571,20 +581,29 @@ function serializeLine(ast, timeStr, sep) {
   return `${ast.prefix}${timeStr}${ast.suffix}${sep}${ast.text}`;
 }
 
-
 function calcTimecodes() {
-  const ed  = getEditor();
+  const ed = getEditor();
   const raw = ed.value;
-  if (!raw.trim()) { toast('редактор пуст', 'err'); return; }
+
+  if (!raw.trim()) {
+    toast('редактор пуст', 'err');
+    return;
+  }
 
   const preset = getPreset(currentStreamer);
   const lines  = raw.split('\n');
-	const { headerLines, bodyLines } = splitHeader(lines, preset);
+	
+	const { block: headerLines, main: bodyWithFooter } =
+		splitBlock(lines, preset.header, false);
+
+	const { main: bodyLines, block: footerLines } =
+		splitBlock(bodyWithFooter, preset.footer, true);
 
   const astList = bodyLines.map(line => parseEditorLine(line, preset.separator));
 
   const validByIdx = new Map();
   const validSeq   = [];
+
   astList.forEach((ast, i) => {
     if (ast) {
       const entry = { ast, idx: i };
@@ -593,7 +612,10 @@ function calcTimecodes() {
     }
   });
 
-  if (!validSeq.length) { toast('нет строк в нужном формате', 'err'); return; }
+  if (!validSeq.length) {
+    toast('нет строк в нужном формате', 'err');
+    return;
+  }
 
   const emojiPattern = (preset.visual.mode === 'detect')
     ? extractEmojiPatternFromAST(validSeq)
@@ -607,8 +629,7 @@ function calcTimecodes() {
   }
 
   if (canRecalc) {
-    const anchorSec = validSeq[anchorSeqIdx].ast.time;
-    let t = anchorSec;
+    let t = validSeq[anchorSeqIdx].ast.time;
 
     for (let i = anchorSeqIdx; i < validSeq.length; i++) {
       if (i > anchorSeqIdx) {
@@ -620,7 +641,8 @@ function calcTimecodes() {
       validSeq[i].ast.time = t;
     }
 
-    t = anchorSec;
+    t = validSeq[anchorSeqIdx].ast.time;
+
     for (let i = anchorSeqIdx - 1; i >= 0; i--) {
       const d = playedAtArr[i + 1] - playedAtArr[i];
       if (!isFinite(d)) break;
@@ -633,17 +655,26 @@ function calcTimecodes() {
   const rebuiltLines = bodyLines.map((line, i) => {
     const entry = validByIdx.get(i);
     if (!entry) return line;
+
     entry.ast.timeStr = formatTC(entry.ast.time, preset.timeFormat);
     return serializeLine(entry.ast, entry.ast.timeStr, preset.separator);
   });
 
   const finalLines = applyVisualPreset(rebuiltLines, validByIdx, preset, emojiPattern);
-	const resultLines = joinWithHeader(
-		headerLines.length ? headerLines : normalizeHeader(preset.header),
-		finalLines
+
+	const withHeader = joinBlock(
+		finalLines,
+		headerLines.length ? headerLines : normalizeBlock(preset.header),
+		false
 	);
-  const newText = resultLines.join('\n');
-  commitToEditor(ed, newText);
+
+	const resultLines = joinBlock(
+		withHeader,
+		footerLines.length ? footerLines : normalizeBlock(preset.footer),
+		true
+	);
+
+  commitToEditor(ed, resultLines.join('\n'));
 
   const hasAnchor = anchorSeqIdx !== -1;
   const hasEmoji  = emojiPattern && (emojiPattern.left || emojiPattern.right);
@@ -701,10 +732,14 @@ function applyVisualPreset(lines, validByIdx, preset, emojiPattern) {
 				}
 
 				if (artist === authorCfg.matchArtist.toLowerCase()) {
-					if (authorCfg.left !== undefined) {
+					const hasLeftPattern  = pattern.left && pattern.left.length;
+					const hasRightPattern = pattern.right && pattern.right.length;
+
+					if (hasLeftPattern && authorCfg.left !== undefined) {
 						leftEmoji = authorCfg.left || '';
 					}
-					if (authorCfg.right !== undefined && authorCfg.right !== null) {
+
+					if (hasRightPattern && authorCfg.right !== undefined && authorCfg.right !== null) {
 						rightEmoji = authorCfg.right;
 					}
 				}
@@ -984,7 +1019,7 @@ async function loadSongs() {
 			return `${formatTC(0, preset.timeFormat)}${preset.separator}${songText}`;
 		});
 		
-		const header = normalizeHeader(preset.header);
+		const header = normalizeBlock(preset.header);
 		const text = [...header, ...body].join('\n');
 
     commitToEditor(getEditor(), text);
