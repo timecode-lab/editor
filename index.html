@@ -280,7 +280,7 @@ main {
   <!-- Streamer picker -->
   <div class="input-row">
     <div class="streamer-select-wrap">
-      <select class="streamer-select" id="streamer-select" onchange="onSelectChange(this)">
+      <select class="streamer-select" id="streamer-select">
         <option value="__custom__">другой стример...</option>
       </select>
       <span class="select-arrow">▼</span>
@@ -350,22 +350,30 @@ main {
 <script>
 'use strict';
 
-const API_BASE					= 'https://api.streamersonglist.com/v1';
-const API_PROXY					= 'https://editor-lovat-beta.vercel.app/api/proxy';
-const GAP_THRESHOLD			= 6 * 60 * 60 * 1000;
-const UNDO_LIMIT				= 200;
-const STORAGE_KEY				= 'tclab_v1';
-const STORAGE_STREAMER	= 'tclab_streamer';
-const KNOWN_IDS					= { 'vanilla__bun': 39650, 'gellert_lera': 28268, 'maniavolk': 39141 };
-const TIME_SEP					= ' \u2013 ';
-const TEXT_SEP					= ' - ';
+const API_BASE							= 'https://api.streamersonglist.com/v1';
+const API_PROXY							= 'https://editor-lovat-beta.vercel.app/api/proxy';
+const GAP_THRESHOLD					= 6 * 60 * 60 * 1000;
+const UNDO_LIMIT						= 200;
+const STORAGE_KEY						= 'tclab_v1';
+const STORAGE_STREAMER			= 'tclab_streamer';
+const STORAGE_HEADER_EMOJI	= 'tclab_header_emoji';
+const KNOWN_IDS							= { 'vanilla__bun': 39650, 'gellert_lera': 28268, 'maniavolk': 39141 };
+const TIME_SEP							= ' \u2013 ';
+const TEXT_SEP							= ' - ';
+const INPUT_SAVE_DELAY			= 600;
+const TOAST_DURATION				= 2500;
+const MAX_TOASTS						= 5;
 
-let playedAtArr					= [];
-let undoStack						= [];
-let redoStack						= [];
-let confirmCb						= null;
-let currentStreamer			= null;
-let inputTimer					= null;
+const state = {
+	playedAtArr: [],
+	undoStack: [],
+	redoStack: [],
+	confirmCb: null,
+	currentStreamer: null,
+	inputTimer: null,
+	loadToken: 0,
+	editorEl: null
+};
 
 const PRESETS = {
 
@@ -393,7 +401,10 @@ const PRESETS = {
 	vanilla__bun: {
 		timeFormat: '00:00:00',
 		separator:  TIME_SEP,
-		header: ['ТАЙМ-КОДЫ🌸', ''],
+		header: {
+			lines: ['ТАЙМ-КОДЫ', ''],
+			emoji: true
+		},
 		footer: [
 			'',
 			'Друзья, приглашаем вас на наши уютные стримы в отличной компании!',
@@ -507,28 +518,143 @@ function runTextRule(rule, artist, title, preset) {
 }
 
 function normalizeBlock(block) {
-  if (!block) return [];
-  return Array.isArray(block) ? block : [block];
+	if (!block) return [];
+
+	if (
+		block &&
+		typeof block === 'object' &&
+		Array.isArray(block.lines)
+	) {
+		block = block.lines;
+	}
+
+	if (Array.isArray(block)) {
+		return block.filter(v => typeof v === 'string');
+	}
+
+	return typeof block === 'string'
+		? [block]
+		: [];
 }
 
-function splitBlock(lines, block, fromEnd = false) {
-  const normalized = normalizeBlock(block);
-  if (!normalized.length) return { main: lines, block: [] };
+function saveHeaderEmoji(value) {
+	value = (value || '').trim();
 
-  if (!fromEnd) {
-    const matches = normalized.every((v, i) => lines[i] === v);
-    return matches
-      ? { block: lines.slice(0, normalized.length), main: lines.slice(normalized.length) }
-      : { block: [], main: lines };
-  }
+	if (!value) {
+		localStorage.removeItem(STORAGE_HEADER_EMOJI);
+		return;
+	}
 
-  const startIdx = lines.length - normalized.length;
-  if (startIdx < 0) return { main: lines, block: [] };
+	localStorage.setItem(STORAGE_HEADER_EMOJI, value);
+}
 
-  const matches = normalized.every((v, i) => lines[startIdx + i] === v);
-  return matches
-    ? { main: lines.slice(0, startIdx), block: lines.slice(startIdx) }
-    : { main: lines, block: [] };
+function loadHeaderEmoji() {
+	return (localStorage.getItem(STORAGE_HEADER_EMOJI) || '').trim();
+}
+
+function getSeasonEmoji(date) {
+	const m = date.getMonth() + 1;
+
+	if (m >= 3 && m <= 5) return '🌸';
+	if (m >= 6 && m <= 8) return '☀️';
+	if (m >= 9 && m <= 11) return '🍂';
+
+	return '❄️';
+}
+
+function buildHeaderLines(preset, firstSongDate) {
+	const cfg = preset.header;
+	const lines = normalizeBlock(cfg);
+
+	if (!lines.length) return [];
+
+	if (!cfg || typeof cfg !== 'object' || !cfg.emoji) {
+		return lines;
+	}
+
+	let emoji = loadHeaderEmoji();
+
+	if (!emoji) {
+		emoji = getSeasonEmoji(firstSongDate);
+	}
+
+	const result = [...lines];
+	result[0] = result[0] + emoji;
+
+	return result;
+}
+
+function extractHeaderEmoji(headerLines, preset) {
+	const cfg = preset.header;
+
+	if (!cfg || typeof cfg !== 'object' || !cfg.emoji) {
+		return null;
+	}
+
+	if (!headerLines || !headerLines.length) {
+		return null;
+	}
+
+	const base = normalizeBlock(cfg)[0] || '';
+	const first = headerLines[0];
+
+	if (!first.startsWith(base)) {
+		return null;
+	}
+
+	return first.slice(base.length).trim();
+}
+
+function splitBlock(lines, block, fromEnd = false, preset = null) {
+	const normalized = normalizeBlock(block);
+
+	if (!normalized.length) {
+		return { main: lines, block: [] };
+	}
+
+	if (!fromEnd) {
+		let matches;
+
+		const headerCfg = preset?.header;
+		const useHeaderEmojiMatching =
+			headerCfg &&
+			typeof headerCfg === 'object' &&
+			headerCfg.emoji;
+
+		if (useHeaderEmojiMatching) {
+			const baseFirstLine = normalizeBlock(headerCfg)[0] || '';
+
+			matches =
+				lines.length >= normalized.length &&
+				lines[0].startsWith(baseFirstLine) &&
+				normalized.slice(1).every((v, i) => lines[i + 1] === v);
+		} else {
+			matches = normalized.every((v, i) => lines[i] === v);
+		}
+
+		return matches
+			? {
+				block: lines.slice(0, normalized.length),
+				main: lines.slice(normalized.length)
+			}
+			: { block: [], main: lines };
+	}
+
+	const startIdx = lines.length - normalized.length;
+
+	if (startIdx < 0) {
+		return { main: lines, block: [] };
+	}
+
+	const matches =
+		normalized.every((v, i) => lines[startIdx + i] === v);
+
+	return matches
+		? {
+			main: lines.slice(0, startIdx),
+			block: lines.slice(startIdx)
+		}
+		: { main: lines, block: [] };
 }
 
 function joinBlock(main, block, fromEnd = false) {
@@ -590,11 +716,22 @@ function calcTimecodes() {
     return;
   }
 
-  const preset = getPreset(currentStreamer);
-  const lines  = raw.split('\n');
-	
-	const { block: headerLines, main: bodyWithFooter } =
-		splitBlock(lines, preset.header, false);
+  const preset = getPreset(state.currentStreamer);
+  const lines  = raw.split('\n');	
+	const expectedHeader = buildHeaderLines(
+		preset,
+		new Date(state.playedAtArr[0] || Date.now())
+	);
+
+	const {
+		block: headerLines,
+		main: bodyWithFooter
+	} = splitBlock(
+		lines,
+		expectedHeader,
+		false,
+		preset
+	);
 
 	const { main: bodyLines, block: footerLines } =
 		splitBlock(bodyWithFooter, preset.footer, true);
@@ -622,18 +759,16 @@ function calcTimecodes() {
     : null;
 
   const anchorSeqIdx = validSeq.findIndex(e => e.ast.time !== 0);
-  const canRecalc = anchorSeqIdx !== -1 && playedAtArr.length === validSeq.length;
-
-  if (anchorSeqIdx !== -1 && playedAtArr.length && !canRecalc) {
-    console.warn('[TCLab] playedAtArr.length !== validSeq.length; skipping time recalc');
-  }
+	const canRecalc =
+		anchorSeqIdx !== -1 &&
+		state.playedAtArr.length === validSeq.length;
 
   if (canRecalc) {
     let t = validSeq[anchorSeqIdx].ast.time;
 
     for (let i = anchorSeqIdx; i < validSeq.length; i++) {
       if (i > anchorSeqIdx) {
-        const d = playedAtArr[i] - playedAtArr[i - 1];
+			const d =	state.playedAtArr[i] - state.playedAtArr[i - 1];
         if (!isFinite(d)) break;
         t += Math.round(d / 1000);
         if (t < 0) t = 0;
@@ -644,7 +779,7 @@ function calcTimecodes() {
     t = validSeq[anchorSeqIdx].ast.time;
 
     for (let i = anchorSeqIdx - 1; i >= 0; i--) {
-      const d = playedAtArr[i + 1] - playedAtArr[i];
+			const d =	state.playedAtArr[i + 1] - state.playedAtArr[i];
       if (!isFinite(d)) break;
       t -= Math.round(d / 1000);
       if (t < 0) t = 0;
@@ -661,10 +796,22 @@ function calcTimecodes() {
   });
 
   const finalLines = applyVisualPreset(rebuiltLines, validByIdx, preset, emojiPattern);
+	if (headerLines.length) {
+		const emoji = extractHeaderEmoji(
+			headerLines,
+			preset
+		);
+
+		if (emoji !== null) {
+			saveHeaderEmoji(emoji);
+		}
+	}
 
 	const withHeader = joinBlock(
 		finalLines,
-		headerLines.length ? headerLines : normalizeBlock(preset.header),
+		headerLines.length
+			? headerLines
+			: expectedHeader,
 		false
 	);
 
@@ -821,35 +968,35 @@ function extractEmojiPatternFromAST(validSeq) {
 }
 
 function pushUndo(text) {
-  if (undoStack.length && undoStack[undoStack.length - 1] === text) return;
-  undoStack.push(text);
-  if (undoStack.length > UNDO_LIMIT) undoStack.shift();
-  redoStack = [];
+  if (state.undoStack.length && state.undoStack[state.undoStack.length - 1] === text) return;
+  state.undoStack.push(text);
+  if (state.undoStack.length > UNDO_LIMIT) state.undoStack.shift();
+  state.redoStack = [];
   updateUndoBtns();
 }
 
 function edUndo() {
   const ed = getEditor();
-  if (undoStack.length <= 1) return;
-  redoStack.push(undoStack.pop());
-  const text = undoStack[undoStack.length - 1] ?? '';
+  if (state.undoStack.length <= 1) return;
+  state.redoStack.push(state.undoStack.pop());
+  const text = state.undoStack[state.undoStack.length - 1] ?? '';
   ed.value = text;
   localStorage.setItem(STORAGE_KEY, text);
   updateUndoBtns();
 }
 
 function edRedo() {
-  if (!redoStack.length) return;
-  const text = redoStack.pop();
-  undoStack.push(text);
+  if (!state.redoStack.length) return;
+  const text = state.redoStack.pop();
+  state.undoStack.push(text);
   getEditor().value = text;
   localStorage.setItem(STORAGE_KEY, text);
   updateUndoBtns();
 }
 
 function updateUndoBtns() {
-  document.getElementById('btn-undo').disabled = undoStack.length <= 1;
-  document.getElementById('btn-redo').disabled = redoStack.length === 0;
+  document.getElementById('btn-undo').disabled = state.undoStack.length <= 1;
+  document.getElementById('btn-redo').disabled = state.redoStack.length === 0;
 }
 
 function commitToEditor(ed, text) {
@@ -865,15 +1012,18 @@ function commitToEditor(ed, text) {
   updateUndoBtns();
 }
 
-function getEditor() { return document.getElementById('editor'); }
+function getEditor() {	return state.editorEl; }
 
 function onEditorInput() {
-  clearTimeout(inputTimer);
-  inputTimer = setTimeout(() => {
-    const val = getEditor().value;
-    pushUndo(val);
-    localStorage.setItem(STORAGE_KEY, val);
-  }, 600);
+	clearTimeout(state.inputTimer);
+	state.inputTimer = setTimeout(() => {
+		const val = getEditor().value;
+		pushUndo(val);
+		localStorage.setItem(
+			STORAGE_KEY,
+			val
+		);
+	}, INPUT_SAVE_DELAY);
 }
 
 function onEditorKeyDown(e) {
@@ -885,7 +1035,7 @@ function onEditorKeyDown(e) {
 function onSelectChange(sel) {
   const inp = document.getElementById('streamer-input');
   if (sel.value === '__custom__') {
-    currentStreamer = null;
+    state.currentStreamer = null;
     setStreamerToURL(null);
     saveStreamer(null);
     sel.style.display = 'none';
@@ -893,9 +1043,9 @@ function onSelectChange(sel) {
     inp.focus();
     return;
   }
-  currentStreamer = sel.value;
-  setStreamerToURL(currentStreamer);
-  saveStreamer(currentStreamer);
+  state.currentStreamer = sel.value;
+  setStreamerToURL(state.currentStreamer);
+  saveStreamer(state.currentStreamer);
 }
 
 function getStreamerFromURL() {
@@ -912,6 +1062,7 @@ function saveStreamer(name) {
 function loadStreamer() { return localStorage.getItem(STORAGE_STREAMER); }
 
 window.addEventListener('DOMContentLoaded', () => {
+	state.editorEl = document.getElementById('editor');
   const saved = localStorage.getItem(STORAGE_KEY);
   if (saved) {
     getEditor().value = saved;
@@ -922,6 +1073,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   const sel = document.getElementById('streamer-select');
+	sel.addEventListener('change', e => onSelectChange(e.target));
   const inp = document.getElementById('streamer-input');
   sel.innerHTML = '';
   for (const name of Object.keys(KNOWN_IDS)) {
@@ -935,16 +1087,16 @@ window.addEventListener('DOMContentLoaded', () => {
 
   const urlStreamer   = getStreamerFromURL();
   const savedStreamer = loadStreamer();
-  currentStreamer = (urlStreamer) ||
+  state.currentStreamer = (urlStreamer) ||
                    (savedStreamer && KNOWN_IDS[savedStreamer] ? savedStreamer : null);
-  sel.value = currentStreamer || '__custom__';
+  sel.value = state.currentStreamer || '__custom__';
 
   inp.addEventListener('keydown', e => { if (e.key === 'Enter') loadSongs(); });
   inp.addEventListener('blur', () => {
     if (!inp.value.trim()) {
       inp.classList.remove('visible');
       sel.style.display = '';
-      sel.value = currentStreamer || '__custom__';
+      sel.value = state.currentStreamer || '__custom__';
     }
   });
 
@@ -980,12 +1132,15 @@ async function resolveStreamerId(nameOrId) {
 }
 
 async function loadSongs() {
-  if (document.getElementById('btn-load').disabled) return;
+	if (document.getElementById('btn-load').disabled) {
+		return;
+	}
 
-  const sel      = document.getElementById('streamer-select');
-  const inp      = document.getElementById('streamer-input');
-  const isCustom = inp.classList.contains('visible');
-  const nameOrId = isCustom ? inp.value.trim() : sel.value;
+	const token			= ++state.loadToken;
+  const sel				= document.getElementById('streamer-select');
+  const inp				= document.getElementById('streamer-input');
+  const isCustom	= inp.classList.contains('visible');
+  const nameOrId	= isCustom ? inp.value.trim() : sel.value;
 
   if (!nameOrId || nameOrId === '__custom__') {
     toast('введите имя стримера', 'err');
@@ -1008,10 +1163,13 @@ async function loadSongs() {
     if (!ls.length) throw new Error('не удалось определить последний стрим');
     ls.reverse();
 
-    const streamerName = isCustom ? nameOrId : (currentStreamer || nameOrId);
+    const streamerName = isCustom ? nameOrId : (state.currentStreamer || nameOrId);
     const preset = getPreset(streamerName);
 
-    playedAtArr = ls.map(x => new Date(x.playedAt).getTime());
+		if (token !== state.loadToken) { return; }
+
+		state.playedAtArr =
+			ls.map(x => new Date(x.playedAt).getTime());
 
 		const body = ls.map(x => {
 			const normalized = normalizeSong(x);
@@ -1019,7 +1177,7 @@ async function loadSongs() {
 			return `${formatTC(0, preset.timeFormat)}${preset.separator}${songText}`;
 		});
 		
-		const header = normalizeBlock(preset.header);
+		const header = buildHeaderLines(preset,	new Date(ls[0].playedAt));
 		const text = [...header, ...body].join('\n');
 
     commitToEditor(getEditor(), text);
@@ -1064,18 +1222,21 @@ async function fetchWithFallback(path, proxyDelay = 1000) {
 }
 
 function extractLastStream(items) {
-  const clean = items
-    .filter(x => x?.playedAt)
-    .map(x => ({ ...x, ts: new Date(x.playedAt).getTime() }))
-    .filter(x => !isNaN(x.ts));
+	const clean = items
+		.filter(x => x?.playedAt)
+		.map(x => ({
+			item: x,
+			ts: new Date(x.playedAt).getTime()
+		}))
+		.filter(x => !isNaN(x.ts));
 
   if (!clean.length) return [];
   clean.sort((a, b) => b.ts - a.ts);
 
-  const result = [clean[0]];
+  const result = [clean[0].item];
   for (let i = 1; i < clean.length; i++) {
     if (clean[i - 1].ts - clean[i].ts > GAP_THRESHOLD) break;
-    result.push(clean[i]);
+    result.push(clean[i].item);
   }
   return result;
 }
@@ -1085,9 +1246,15 @@ async function copyText() {
   if (!text.trim()) { toast('нечего копировать', 'err'); return; }
   try {
     await navigator.clipboard.writeText(text);
-  } catch {
-    const ed = getEditor(); ed.select(); document.execCommand('copy');
-  }
+	} catch {
+		const ed = getEditor();
+		const start = ed.selectionStart;
+		const end = ed.selectionEnd;
+
+		ed.select();
+		document.execCommand('copy');
+		ed.setSelectionRange(start, end);
+	}
   toast('скопировано', 'ok');
 }
 
@@ -1095,7 +1262,7 @@ function clearEditor() {
   showConfirm('Очистить редактор?', 'Текст и таймкоды будут удалены', 'очистить', () => {
     const ed = getEditor();
     commitToEditor(ed, '');
-    playedAtArr = [];
+    state.playedAtArr = [];
     setStatus('', 'редактор очищен', false);
     toast('очищено', '');    
   });
@@ -1125,27 +1292,45 @@ function setBtnLoading(loading) {
 }
 
 function toast(msg, type) {
-  const el = document.createElement('div');
-  el.className = `toast${type ? ' ' + type : ''}`;
-  el.textContent = msg;
-  document.getElementById('toast-container').appendChild(el);
-  setTimeout(() => el.remove(), 2500);
+	const container =
+		document.getElementById('toast-container');
+
+	while (
+		container.children.length >= MAX_TOASTS
+	) {
+		container.firstElementChild.remove();
+	}
+
+	const el =
+		document.createElement('div');
+
+	el.className =
+		`toast${type ? ' ' + type : ''}`;
+
+	el.textContent = msg;
+
+	container.appendChild(el);
+
+	setTimeout(
+		() => el.remove(),
+		TOAST_DURATION
+	);
 }
 
 function showConfirm(title, sub, okLabel, cb) {
   document.getElementById('confirm-title').textContent    = title;
   document.getElementById('confirm-sub').textContent      = sub;
   document.getElementById('confirm-ok-btn').textContent   = okLabel;
-  confirmCb = cb;
+  state.confirmCb = cb;
   document.getElementById('confirm-overlay').style.display = 'flex';
 }
 function confirmOk() {
   document.getElementById('confirm-overlay').style.display = 'none';
-  if (confirmCb) { confirmCb(); confirmCb = null; }
+  if (state.confirmCb) { state.confirmCb(); state.confirmCb = null; }
 }
 function confirmCancel() {
   document.getElementById('confirm-overlay').style.display = 'none';
-  confirmCb = null;
+  state.confirmCb = null;
 }
 function confirmBgClick(e) {
   if (e.target === document.getElementById('confirm-overlay')) confirmCancel();
