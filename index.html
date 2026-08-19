@@ -1222,69 +1222,22 @@ async function loadSongs() {
 }
 
 async function fetchWithFallback(path) {
-  const directUrl = API_BASE + path;
   const proxyUrl =
     `${API_PROXY}?endpoint=${encodeURIComponent(path)}`;
 
   const startTime = performance.now();
 
   try {
-    const directRes = await fetch(directUrl);
-
-    const duration =
-      Math.round(performance.now() - startTime);
-
-    if (directRes.ok) {
-      console.log(
-        `[TCLab] Success (direct) | ` +
-        `Status: ${directRes.status} | ` +
-        `Duration: ${duration}ms`
-      );
-
-      return directRes;
-    }
-
-    console.warn(
-      `[TCLab] Direct API returned ${directRes.status} | ` +
-      `Duration: ${duration}ms`
-    );
-
-    const shouldTryProxy =
-      directRes.status === 401 ||
-      directRes.status === 403 ||
-      directRes.status === 408 ||
-      directRes.status === 429 ||
-      directRes.status >= 500;
-
-    if (!shouldTryProxy) {
-      return directRes;
-    }
-
-  } catch (err) {
-    const duration =
-      Math.round(performance.now() - startTime);
-
-    console.warn(
-      `[TCLab] Direct API failed | ` +
-      `${err.message} | ` +
-      `Duration: ${duration}ms | ` +
-      `trying Proxy...`
-    );
-  }
-
-  const proxyStartTime = performance.now();
-
-  try {
     const proxyRes = await fetch(proxyUrl);
 
     const duration =
-      Math.round(performance.now() - proxyStartTime);
+      ((performance.now() - startTime) / 1000).toFixed(2) + 's';
 
     if (proxyRes.ok) {
       console.log(
         `[TCLab] Success (proxy) | ` +
         `Status: ${proxyRes.status} | ` +
-        `Duration: ${duration}ms`
+        `Duration: ${duration}`
       );
 
       return proxyRes;
@@ -1293,23 +1246,23 @@ async function fetchWithFallback(path) {
     console.error(
       `[TCLab] Proxy returned error | ` +
       `Status: ${proxyRes.status} | ` +
-      `Duration: ${duration}ms`
+      `Duration: ${duration}`
     );
 
     return proxyRes;
 
   } catch (err) {
     const duration =
-      Math.round(performance.now() - proxyStartTime);
+      Math.round(performance.now() - startTime);
 
     console.error(
       `[TCLab] Proxy failed | ` +
       `${err.message} | ` +
-      `Duration: ${duration}ms`
+      `Duration: ${duration}`
     );
 
     throw new Error(
-      'Не удалось получить данные: API и прокси недоступны'
+      'Не удалось получить данные через API proxy'
     );
   }
 }
