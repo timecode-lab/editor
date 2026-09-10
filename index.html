@@ -356,7 +356,6 @@ const GAP_THRESHOLD					= 6 * 60 * 60 * 1000;
 const UNDO_LIMIT						= 200;
 const STORAGE_KEY						= 'tclab_v2';
 const STORAGE_STREAMER			= 'tclab_streamer';
-const STORAGE_HEADER_EMOJI	= 'tclab_header_emoji';
 const KNOWN_IDS							= { 'vanilla__bun': 39650, 'gellert_lera': 28268, 'maniavolk': 39141 };
 const TIME_SEP							= ' \u2013 ';
 const TEXT_SEP							= ' - ';
@@ -538,21 +537,6 @@ function normalizeBlock(block) {
 		: [];
 }
 
-function saveHeaderEmoji(value) {
-	value = (value || '').trim();
-
-	if (!value) {
-		localStorage.removeItem(STORAGE_HEADER_EMOJI);
-		return;
-	}
-
-	localStorage.setItem(STORAGE_HEADER_EMOJI, value);
-}
-
-function loadHeaderEmoji() {
-	return (localStorage.getItem(STORAGE_HEADER_EMOJI) || '').trim();
-}
-
 function getSeasonEmoji(date) {
 	const m = date.getMonth() + 1;
 
@@ -573,37 +557,12 @@ function buildHeaderLines(preset, firstSongDate) {
 		return lines;
 	}
 
-	let emoji = loadHeaderEmoji();
-
-	if (!emoji) {
-		emoji = getSeasonEmoji(firstSongDate);
-	}
+	const emoji = getSeasonEmoji(firstSongDate);
 
 	const result = [...lines];
 	result[0] = result[0] + emoji;
 
 	return result;
-}
-
-function extractHeaderEmoji(headerLines, preset) {
-	const cfg = preset.header;
-
-	if (!cfg || typeof cfg !== 'object' || !cfg.emoji) {
-		return null;
-	}
-
-	if (!headerLines || !headerLines.length) {
-		return null;
-	}
-
-	const base = normalizeBlock(cfg)[0] || '';
-	const first = headerLines[0];
-
-	if (!first.startsWith(base)) {
-		return null;
-	}
-
-	return first.slice(base.length).trim();
 }
 
 function splitBlock(lines, block, fromEnd = false, preset = null) {
@@ -797,17 +756,6 @@ function calcTimecodes() {
   });
 
   const finalLines = applyVisualPreset(rebuiltLines, validByIdx, preset, emojiPattern);
-	if (headerLines.length) {
-		const emoji = extractHeaderEmoji(
-			headerLines,
-			preset
-		);
-
-		if (emoji !== null) {
-			saveHeaderEmoji(emoji);
-		}
-	}
-
 	const withHeader = joinBlock(
 		finalLines,
 		headerLines.length
