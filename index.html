@@ -85,15 +85,6 @@ main {
   position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
   pointer-events: none; color: var(--muted); font-size: 9px;
 }
-.streamer-input {
-  width: 100%; background: var(--surface); border: 1px solid var(--border);
-  border-radius: var(--radius-sm); color: var(--text); font-family: var(--mono);
-  font-size: 14px; padding: 0 12px; height: 44px; outline: none;
-  transition: border-color 0.15s; display: none;
-}
-.streamer-input::placeholder { color: var(--muted); }
-.streamer-input:focus { border-color: var(--accent); }
-.streamer-input.visible { display: block; }
 
 /* ── BUTTONS ────────────────────────────── */
 .btn {
@@ -280,12 +271,8 @@ main {
   <!-- Streamer picker -->
   <div class="input-row">
     <div class="streamer-select-wrap">
-      <select class="streamer-select" id="streamer-select">
-        <option value="__custom__">другой стример...</option>
-      </select>
+      <select class="streamer-select" id="streamer-select"></select>
       <span class="select-arrow">▼</span>
-      <input class="streamer-input" id="streamer-input" type="text"
-        placeholder="имя или ID стримера..." autocomplete="off" spellcheck="false"/>
     </div>
     <button class="btn btn-primary" id="btn-load">
       <span id="load-label">загрузить</span>
@@ -442,23 +429,43 @@ function getPreset(streamerName) {
 }
 
 function normalizeSong(item) {
-  const song = item && typeof item.song === 'object' ? item.song : null;
-  const hasSongData = song && ((song.artist || '').trim() || (song.title || '').trim());
+  const song = item?.song && typeof item.song === 'object' ? item.song : null;
+  const artist = (song?.artist || '').trim();
+  const title = (song?.title || '').trim();
 
-  if (hasSongData) {
+  if (artist || title) {
+    return { artist, title, raw: null };
+  }
+
+  const nonlistArtist = (item?.nonlistArtist || '').trim();
+  const nonlistTitle = (item?.nonlistTitle || '').trim();
+
+  if (nonlistArtist || nonlistTitle) {
     return {
-      artist: (song.artist || '').trim(),
-      title:  (song.title  || '').trim(),
-      raw:    null,
+      artist: nonlistArtist,
+      title: nonlistTitle,
+      raw: null
     };
   }
 
-  const nonlist =
-    (typeof item.nonlistSong === 'string' && item.nonlistSong) ||
-    (item.requests?.[0] && typeof item.requests[0].nonlistSong === 'string' && item.requests[0].nonlistSong);
+  const request = item?.requests?.[0];
+  const requestArtist = (request?.nonlistArtist || '').trim();
+  const requestTitle = (request?.nonlistTitle || '').trim();
 
-  if (nonlist) {
-    return { artist: '', title: '', raw: nonlist.trim() };
+  if (requestArtist || requestTitle) {
+    return {
+      artist: requestArtist,
+      title: requestTitle,
+      raw: null
+    };
+  }
+
+  const legacyNonlist =
+    (typeof item?.nonlistSong === 'string' && item.nonlistSong) ||
+    (typeof request?.nonlistSong === 'string' && request.nonlistSong);
+
+  if (legacyNonlist) {
+    return { artist: '', title: legacyNonlist.trim(), raw: null };
   }
 
   return { artist: '', title: '', raw: 'Неизвестная песня' };
@@ -985,24 +992,14 @@ function onEditorKeyDown(e) {
 }
 
 function onSelectChange(sel) {
-  const inp = document.getElementById('streamer-input');
-  if (sel.value === '__custom__') {
-    state.currentStreamer = null;
-    setStreamerToURL(null);
-    saveStreamer(null);
-    sel.style.display = 'none';
-    inp.classList.add('visible');
-    inp.focus();
-    return;
-  }
   state.currentStreamer = sel.value;
   setStreamerToURL(state.currentStreamer);
   saveStreamer(state.currentStreamer);
 }
 
 function getStreamerFromURL() {
-  const hash = window.location.hash.replace('#', '').trim();
-  return (hash && KNOWN_IDS[hash]) ? hash : null;
+  const name = window.location.hash.slice(1).trim();
+  return Object.hasOwn(KNOWN_IDS, name) ? name : null;
 }
 function setStreamerToURL(name) {
   history.replaceState(null, '', name ? `#${name}` : window.location.pathname);
@@ -1025,32 +1022,26 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   const sel = document.getElementById('streamer-select');
-	sel.addEventListener('change', e => onSelectChange(e.target));
-  const inp = document.getElementById('streamer-input');
-  sel.innerHTML = '';
+  sel.addEventListener('change', e => onSelectChange(e.target));
+
   for (const name of Object.keys(KNOWN_IDS)) {
     const opt = document.createElement('option');
-    opt.value = name; opt.textContent = name;
+    opt.value = name;
+    opt.textContent = name;
     sel.appendChild(opt);
   }
-  const optCustom = document.createElement('option');
-  optCustom.value = '__custom__'; optCustom.textContent = 'другой стример...';
-  sel.appendChild(optCustom);
 
-  const urlStreamer   = getStreamerFromURL();
+  const urlStreamer = getStreamerFromURL();
   const savedStreamer = loadStreamer();
-  state.currentStreamer = (urlStreamer) ||
-                   (savedStreamer && KNOWN_IDS[savedStreamer] ? savedStreamer : null);
-  sel.value = state.currentStreamer || '__custom__';
 
-  inp.addEventListener('keydown', e => { if (e.key === 'Enter') loadSongs(); });
-  inp.addEventListener('blur', () => {
-    if (!inp.value.trim()) {
-      inp.classList.remove('visible');
-      sel.style.display = '';
-      sel.value = state.currentStreamer || '__custom__';
-    }
-  });
+  state.currentStreamer =
+    urlStreamer ||
+    (savedStreamer && KNOWN_IDS[savedStreamer] ? savedStreamer : null) ||
+    Object.keys(KNOWN_IDS)[0];
+
+  sel.value = state.currentStreamer;
+  setStreamerToURL(state.currentStreamer);
+  saveStreamer(state.currentStreamer);
 
   const ed = getEditor();
   ed.addEventListener('keydown', onEditorKeyDown);
@@ -1068,20 +1059,6 @@ window.addEventListener('DOMContentLoaded', () => {
 	document.getElementById('confirm-cancel').addEventListener('click', confirmCancel);
 	document.getElementById('confirm-ok-btn').addEventListener('click', confirmOk);
 });
-
-async function resolveStreamerId(nameOrId) {
-  if (/^\d+$/.test(nameOrId)) return parseInt(nameOrId, 10);
-  if (KNOWN_IDS[nameOrId] !== undefined) return KNOWN_IDS[nameOrId];
-  const r = await fetchWithFallback(`/streamers/${encodeURIComponent(nameOrId)}`);
-  if (!r.ok) {
-    throw new Error(r.status === 404
-      ? `стример «${nameOrId}» не найден`
-      : `ошибка API: ${r.status}`);
-  }
-  const d = await r.json();
-  if (!d.id) throw new Error('не удалось получить ID стримера');
-  return d.id;
-}
 
 async function getApiErrorMessage(response, fallback) {
   try {
@@ -1102,18 +1079,15 @@ async function getApiErrorMessage(response, fallback) {
 }
 
 async function loadSongs() {
-	if (document.getElementById('btn-load').disabled) {
-		return;
-	}
+  const btn = document.getElementById('btn-load');
+  if (btn.disabled) return;
 
-	const token			= ++state.loadToken;
-  const sel				= document.getElementById('streamer-select');
-  const inp				= document.getElementById('streamer-input');
-  const isCustom	= inp.classList.contains('visible');
-  const nameOrId	= isCustom ? inp.value.trim() : sel.value;
+  const token = ++state.loadToken;
+  const streamerName = state.currentStreamer;
+  const streamerId = KNOWN_IDS[streamerName];
 
-  if (!nameOrId || nameOrId === '__custom__') {
-    toast('введите имя стримера', 'err');
+  if (!streamerId) {
+    toast('стример не выбран', 'err');
     return;
   }
 
@@ -1121,51 +1095,55 @@ async function loadSongs() {
   setBtnLoading(true);
 
   try {
-    const sid = await resolveStreamerId(nameOrId);
-		const hr = await fetchWithFallback(
-			`/play_history/export?streamer_id=${sid}`
-		);
+    const hr = await fetchWithFallback(
+      `/play_history/export?streamer_id=${streamerId}`
+    );
 
-		if (!hr.ok) {
-			throw new Error(
-				await getApiErrorMessage(hr, 'Ошибка')
-			);
-		}
+    if (!hr.ok) {
+      throw new Error(await getApiErrorMessage(hr, 'Ошибка'));
+    }
 
-    const hd    = await hr.json();
+    const hd = await hr.json();
     const items = hd.items || hd.data || hd;
-    if (!Array.isArray(items) || !items.length) throw new Error('история воспроизведения пуста');
+
+    if (!Array.isArray(items) || !items.length) {
+      throw new Error('история воспроизведения пуста');
+    }
 
     const ls = extractLastStream(items);
-    if (!ls.length) throw new Error('не удалось определить последний стрим');
+    if (!ls.length) {
+      throw new Error('не удалось определить последний стрим');
+    }
+
     ls.reverse();
 
-    const streamerName = isCustom ? nameOrId : (state.currentStreamer || nameOrId);
     const preset = getPreset(streamerName);
 
-		if (token !== state.loadToken) { return; }
+    if (token !== state.loadToken) return;
 
-		state.playedAtArr =
-			ls.map(x => new Date(x.playedAt).getTime());
+    state.playedAtArr = ls.map(x => new Date(x.playedAt).getTime());
 
-		const body = ls.map(x => {
-			const normalized = normalizeSong(x);
-			const songText   = applyTextRules(normalized, preset);
-			return `${formatTC(0, preset.timeFormat)}${preset.separator}${songText}`;
-		});
-		
-		const header = buildHeaderLines(preset,	new Date(ls[0].playedAt));
-		const text = [...header, ...body].join('\n');
+    const body = ls.map(x => {
+      const normalized = normalizeSong(x);
+      const songText = applyTextRules(normalized, preset);
+      return `${formatTC(0, preset.timeFormat)}${preset.separator}${songText}`;
+    });
+
+    const header = buildHeaderLines(preset, new Date(ls[0].playedAt));
+    const text = [...header, ...body].join('\n');
 
     commitToEditor(getEditor(), text);
-    setStatus('ok', `${nameOrId} — последний стрим`, true, ls.length);
+    setStatus('ok', `${streamerName} — последний стрим`, true, ls.length);
     toast(`загружено ${ls.length} песен`, 'ok');
 
   } catch (err) {
+    if (token !== state.loadToken) return;
     setStatus('error', err.message || 'неизвестная ошибка', false);
     toast(err.message || 'ошибка загрузки', 'err');
   } finally {
-    setBtnLoading(false);
+    if (token === state.loadToken) {
+      setBtnLoading(false);
+    }
   }
 }
 
